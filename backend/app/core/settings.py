@@ -39,6 +39,14 @@ class Settings(BaseSettings):
     maximum_open_trades: int = Field(default=3, ge=0, le=50)
     daily_loss_limit: float = Field(default=0.03, gt=0, le=0.5)
     emergency_stop: bool = False
+    binance_market_data_base_url: str = "https://api.binance.com"
+    binance_market_data_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
+    binance_market_data_max_retries: int = Field(default=2, ge=0, le=5)
+    binance_market_data_backoff_seconds: float = Field(default=0.25, ge=0, le=5)
+    market_data_collection_enabled: bool = False
+    market_data_symbol_refresh_seconds: int = Field(default=3600, ge=60, le=86400)
+    market_data_cycle_interval_seconds: int = Field(default=60, ge=10, le=3600)
+    market_data_symbols: list[str] = ["BTCUSDT", "ETHUSDT"]
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -48,6 +56,13 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
+
+    @field_validator("market_data_symbols", mode="before")
+    @classmethod
+    def parse_market_data_symbols(cls, value: str | list[str]) -> list[str]:
+        if isinstance(value, str):
+            return [symbol.strip().upper() for symbol in value.split(",") if symbol.strip()]
+        return [symbol.upper() for symbol in value]
 
     @field_validator("database_url", mode="after")
     @classmethod
@@ -102,6 +117,10 @@ class Settings(BaseSettings):
             "maximum_open_trades": self.maximum_open_trades,
             "daily_loss_limit": self.daily_loss_limit,
             "emergency_stop": self.emergency_stop,
+            "market_data_collection_enabled": self.market_data_collection_enabled,
+            "market_data_symbol_refresh_seconds": self.market_data_symbol_refresh_seconds,
+            "market_data_cycle_interval_seconds": self.market_data_cycle_interval_seconds,
+            "market_data_symbols": self.market_data_symbols,
         }
 
 
