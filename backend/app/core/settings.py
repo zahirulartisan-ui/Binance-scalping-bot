@@ -47,6 +47,18 @@ class Settings(BaseSettings):
     market_data_symbol_refresh_seconds: int = Field(default=3600, ge=60, le=86400)
     market_data_cycle_interval_seconds: int = Field(default=60, ge=10, le=3600)
     market_data_symbols: list[str] = ["BTCUSDT", "ETHUSDT"]
+    regime_minimum_candles: int = Field(default=60, ge=20, le=500)
+    regime_trend_strength_threshold: float = Field(default=20.0, ge=1, le=100)
+    regime_atr_percent_min: float = Field(default=0.02, ge=0, le=10)
+    regime_atr_percent_max: float = Field(default=2.5, ge=0.01, le=50)
+    regime_realized_volatility_max: float = Field(default=3.0, ge=0.01, le=100)
+    regime_abnormal_candle_percent: float = Field(default=5.0, ge=0.1, le=100)
+    regime_volume_spike_multiplier: float = Field(default=4.0, ge=1, le=100)
+    regime_max_spread_bps: float = Field(default=15.0, ge=0.1, le=1000)
+    regime_ema_slope_threshold: float = Field(default=0.001, ge=0, le=10)
+    regime_range_compression_threshold: float = Field(default=1.0, ge=0.01, le=50)
+    regime_btc_block_volatility_percent: float = Field(default=3.0, ge=0.1, le=100)
+    regime_cache_seconds: int = Field(default=30, ge=1, le=3600)
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -121,6 +133,8 @@ class Settings(BaseSettings):
             "market_data_symbol_refresh_seconds": self.market_data_symbol_refresh_seconds,
             "market_data_cycle_interval_seconds": self.market_data_cycle_interval_seconds,
             "market_data_symbols": self.market_data_symbols,
+            "regime_minimum_candles": self.regime_minimum_candles,
+            "regime_cache_seconds": self.regime_cache_seconds,
         }
 
 

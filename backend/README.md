@@ -46,3 +46,54 @@ alembic downgrade 202607210002
 alembic upgrade head
 alembic heads
 ```
+
+## Batch 4 Market Regime Filter
+
+Batch 4 adds deterministic regime classification from persisted market-data records. It does not execute trades and does not implement scanner ranking, signal grading, risk, order execution, or position management.
+
+### Regimes and Permissions
+
+Regimes:
+
+- `TRENDING_BULLISH`
+- `TRENDING_BEARISH`
+- `RANGING`
+- `HIGH_VOLATILITY`
+- `ABNORMAL_MARKET`
+- `NO_TRADE`
+- `INSUFFICIENT_DATA`
+
+Entry permissions:
+
+- `ALLOW_LONG`
+- `ALLOW_SHORT`
+- `ALLOW_BOTH`
+- `BLOCK_NEW_ENTRIES`
+
+Unsafe regimes and BTC market-wide blocks always return `BLOCK_NEW_ENTRIES`.
+
+### Regime Endpoints
+
+- `GET /api/v1/regime/market`
+- `GET /api/v1/regime/{symbol}`
+
+### Regime Configuration
+
+Settings live in the existing central Pydantic settings class:
+
+- `REGIME_MINIMUM_CANDLES`
+- `REGIME_TREND_STRENGTH_THRESHOLD`
+- `REGIME_ATR_PERCENT_MIN`
+- `REGIME_ATR_PERCENT_MAX`
+- `REGIME_REALIZED_VOLATILITY_MAX`
+- `REGIME_ABNORMAL_CANDLE_PERCENT`
+- `REGIME_VOLUME_SPIKE_MULTIPLIER`
+- `REGIME_MAX_SPREAD_BPS`
+- `REGIME_EMA_SLOPE_THRESHOLD`
+- `REGIME_RANGE_COMPRESSION_THRESHOLD`
+- `REGIME_BTC_BLOCK_VOLATILITY_PERCENT`
+- `REGIME_CACHE_SECONDS`
+
+### Persistence
+
+`market_regime_snapshots` stores the latest regime result per symbol with evaluated timestamp, regime, entry permission, reasons, safety conditions, BTC regime, market-wide block flag, and indicator snapshot.

@@ -1,6 +1,6 @@
 # Binance Scalping Bot
 
-Batch 1 established the project foundation for a Binance scalping auto-trading V1 application. Batch 2 added central settings, database session handling, schema foundations, settings APIs, and expanded health reporting. Batch 3 adds Binance public market-data integration only. It does not include scanner ranking, coin selection, trading strategies, risk calculation, account access, order execution, mock trading data, or fabricated account metrics.
+Batch 1 established the project foundation for a Binance scalping auto-trading V1 application. Batch 2 added central settings, database session handling, schema foundations, settings APIs, and expanded health reporting. Batch 3 added Binance public market-data integration. Batch 4 adds a deterministic market regime filter. It does not include scanner ranking, coin selection, trading strategies, risk calculation, account access, order execution, mock trading data, or fabricated account metrics.
 
 ## Completed Batch 1 Scope
 
@@ -43,6 +43,16 @@ Batch 1 established the project foundation for a Binance scalping auto-trading V
 - Lifecycle-safe background market-data runner, disabled by default, with overlap prevention and graceful shutdown.
 - Market-data read endpoints with safe parameter validation and explicit empty states.
 - Migration `202607210003` for Batch 3 market-data tables.
+
+## Batch 4 Scope
+
+- Deterministic market regime classification from persisted market-data candles and snapshots.
+- Supported regimes: `TRENDING_BULLISH`, `TRENDING_BEARISH`, `RANGING`, `HIGH_VOLATILITY`, `ABNORMAL_MARKET`, `NO_TRADE`, and `INSUFFICIENT_DATA`.
+- Entry permissions: `ALLOW_LONG`, `ALLOW_SHORT`, `ALLOW_BOTH`, and `BLOCK_NEW_ENTRIES`.
+- BTCUSDT market-wide filter before individual symbol permissions.
+- Latest per-symbol regime snapshot persistence via migration `202607210004`.
+- Read-only endpoints: `GET /api/v1/regime/market` and `GET /api/v1/regime/{symbol}`.
+- Scanner integration hook through `MarketRegimeService.annotate_scanner_candidates`. A full scanner workflow is not present in this repository yet, so no scanner ranking or coin selection was added.
 
 ## Architecture
 
@@ -111,6 +121,18 @@ Backend `.env.example`:
 | `MARKET_DATA_SYMBOL_REFRESH_SECONDS` | Symbol metadata refresh cadence. |
 | `MARKET_DATA_CYCLE_INTERVAL_SECONDS` | Market-data runner cycle interval. |
 | `MARKET_DATA_SYMBOLS` | Comma-separated USDT symbols for collection. |
+| `REGIME_MINIMUM_CANDLES` | Minimum candle history required before classification. |
+| `REGIME_TREND_STRENGTH_THRESHOLD` | Minimum trend-strength proxy for trending regimes. |
+| `REGIME_ATR_PERCENT_MIN` | Reserved lower ATR percent bound. |
+| `REGIME_ATR_PERCENT_MAX` | Maximum ATR percent before high-volatility blocking. |
+| `REGIME_REALIZED_VOLATILITY_MAX` | Maximum realized volatility percent. |
+| `REGIME_ABNORMAL_CANDLE_PERCENT` | Single-candle displacement threshold for abnormal markets. |
+| `REGIME_VOLUME_SPIKE_MULTIPLIER` | Volume spike threshold versus rolling average. |
+| `REGIME_MAX_SPREAD_BPS` | Maximum safe spread in basis points. |
+| `REGIME_EMA_SLOPE_THRESHOLD` | Minimum EMA slope threshold for trend direction. |
+| `REGIME_RANGE_COMPRESSION_THRESHOLD` | Recent range threshold for ranging classification. |
+| `REGIME_BTC_BLOCK_VOLATILITY_PERCENT` | BTC volatility safety threshold. |
+| `REGIME_CACHE_SECONDS` | Short TTL for repeated regime calculations. |
 
 Frontend `.env.example`:
 
@@ -197,6 +219,7 @@ docker compose config
 | `ohlcv_candles` | Store validated closed `1m` and `5m` OHLCV candles. |
 | `market_snapshots` | Store current public price/book snapshots and spread bps. |
 | `market_data_cycles` | Store market-data runner cycle status, counts, duration, and rejections. |
+| `market_regime_snapshots` | Store latest deterministic regime result per symbol. |
 
 ## Market Data Endpoints
 
@@ -206,6 +229,18 @@ docker compose config
 | `GET /api/v1/market-data/symbols` | Return persisted eligible symbol metadata. |
 | `GET /api/v1/market-data/candles` | Return persisted candles by symbol/timeframe/date range/limit. |
 | `GET /api/v1/market-data/snapshot` | Return the latest persisted snapshot for a symbol, or `null`. |
+
+## Market Regime Decision Flow
+
+1. Validate the symbol and require persisted active symbol metadata.
+2. Load closed `1m` candles and the latest snapshot.
+3. Evaluate BTCUSDT first for stale data, spread, abnormal candles, volatility, and trend conflict.
+4. Calculate EMA 20, EMA 50, optional EMA 200, ATR percent, realized volatility, trend-strength proxy, recent range, volume ratio, displacement, and spread.
+5. Block abnormal, stale, extreme-spread, high-volatility, and insufficient-data conditions before allowing any directional regime.
+6. Classify bullish or bearish trends only when EMA stack, slope, price location, trend strength, and volatility agree.
+7. Return ranging/no-trade when evidence is weak or conflicting.
+
+`ABNORMAL_MARKET`, `HIGH_VOLATILITY`, `NO_TRADE`, and `INSUFFICIENT_DATA` always return `BLOCK_NEW_ENTRIES`. BTC market-wide blocks also force `BLOCK_NEW_ENTRIES`.
 
 ## Batch 1 Verification Results
 
@@ -262,6 +297,25 @@ Executed locally on Windows from branch `codex/batch-3-market-data`.
 
 The only local verification gap is Docker CLI availability.
 
-## Remaining Batch 4 Scope
+## Batch 4 Verification Results
 
-Batch 4 is Coin Scanner and Candidate Ranking only.
+Executed locally on Windows from branch `codex/batch-4-market-regime`.
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Backend tests | `cd backend && .\.venv\Scripts\python.exe -m pytest` | Passed: `33 passed, 40 warnings` |
+| Backend lint | `cd backend && .\.venv\Scripts\python.exe -m ruff check .` | Passed: `All checks passed!` |
+| Backend type-check | `cd backend && .\.venv\Scripts\python.exe -m mypy .` | Passed: `Success: no issues found in 51 source files` |
+| Alembic upgrade/downgrade/upgrade | `APP_ENV=test DATABASE_URL=sqlite+pysqlite:///./.pytest-local/alembic-regime.db alembic upgrade head && alembic downgrade 202607210003 && alembic upgrade head` | Passed |
+| Alembic heads | `cd backend && .\.venv\Scripts\alembic.exe heads` | Passed: exactly one head, `202607210004 (head)` |
+| Schema and indexes | SQLAlchemy inspector against `.pytest-local/alembic-regime.db` | Passed: `market_regime_snapshots` and `ix_regime_snapshots_symbol_evaluated_at` present |
+| Frontend lint | `cd frontend && npm.cmd run lint` | Passed |
+| Frontend production build | `cd frontend && npm.cmd run build` | Passed: Vite built `29 modules` |
+| Docker Compose YAML structure | Python YAML parser | Passed: required `postgres`, `backend`, and `frontend` services present |
+| Docker Compose config | `docker compose config` | Not completed locally: Docker CLI is not installed or not available on PATH in this environment. |
+
+The only local verification gap is Docker CLI availability. Existing scanner workflow integration is limited to a service hook because the repository does not yet contain a scanner implementation.
+
+## Remaining Batch 5 Scope
+
+Coin Scanner and Candidate Ranking only.
