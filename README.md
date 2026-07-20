@@ -1,6 +1,6 @@
 # Binance Scalping Bot
 
-Batch 1 establishes the project foundation for a Binance scalping auto-trading V1 application. It does not include Binance API integration, scanner logic, strategies, risk engines, orders, positions, mock trading data, or fabricated account metrics.
+Batch 1 established the project foundation for a Binance scalping auto-trading V1 application. Batch 2 adds central settings, database session handling, schema foundations, settings APIs, and expanded health reporting. It does not include Binance API integration, scanner logic, strategies, order execution, mock trading data, or fabricated account metrics.
 
 ## Completed Batch 1 Scope
 
@@ -20,6 +20,18 @@ Batch 1 establishes the project foundation for a Binance scalping auto-trading V
 - UI clearly displays `Demo Trading` and `Execution Disabled`.
 - Docker Compose for backend, frontend, and PostgreSQL.
 - GitHub Actions CI for backend tests, lint, type-check, Alembic head check, frontend lint, and frontend production build.
+
+## Batch 2 Scope
+
+- Central Pydantic Settings class for development, test, and production environments.
+- Validated settings for API host/port, log level, PostgreSQL URL, CORS, Binance Demo credential placeholders, execution safety, demo mode, scanner interval, risk per trade, max open trades, daily loss limit, and emergency stop.
+- Secret values are read from environment variables only and are redacted from serialization.
+- Production startup validation rejects unsafe V1 configurations.
+- Synchronous SQLAlchemy 2.0 engine/session factory with commit, rollback, and close handling.
+- Startup database connectivity verification with fail-closed execution behavior.
+- Initial production-structured database models and migration for application settings, scanner audit data, signal/order/fill/position/risk/journal/system-event records.
+- Public authenticated-ready settings endpoints: `GET /api/v1/settings` and `PATCH /api/v1/settings`.
+- Expanded `/health` response for app, database, environment, demo trading, execution, emergency stop, and migration readiness.
 
 ## Architecture
 
@@ -53,7 +65,10 @@ Root `.env.example`:
 | `POSTGRES_USER` | Local Docker PostgreSQL username. |
 | `POSTGRES_PASSWORD` | Local Docker PostgreSQL password placeholder. |
 | `BACKEND_DATABASE_URL` | Backend database URL for Docker Compose. |
+| `BACKEND_APP_ENV` | Backend environment: `development`, `test`, or `production`. |
 | `BACKEND_EXECUTION_ENABLED` | Must default to `false`. |
+| `BACKEND_DEMO_TRADING_MODE` | Demo trading mode flag, default `true`. |
+| `BACKEND_EMERGENCY_STOP` | Emergency stop flag, default `false`. |
 | `FRONTEND_API_BASE_URL` | Browser-facing backend base URL. |
 
 Backend `.env.example`:
@@ -61,11 +76,21 @@ Backend `.env.example`:
 | Name | Purpose |
 | --- | --- |
 | `APP_NAME` | API display name. |
-| `APP_ENV` | Runtime environment label. |
+| `APP_ENV` | Runtime environment: `development`, `test`, or `production`. |
+| `API_HOST` | API bind host. |
+| `API_PORT` | API bind port. |
 | `LOG_LEVEL` | Structured logging level. |
 | `DATABASE_URL` | PostgreSQL SQLAlchemy URL. |
-| `EXECUTION_ENABLED` | Live execution guard, default `false`. |
 | `ALLOWED_ORIGINS` | Comma-separated CORS origins. |
+| `BINANCE_DEMO_API_KEY` | Binance Demo API key from environment only. |
+| `BINANCE_DEMO_API_SECRET` | Binance Demo API secret from environment only. |
+| `EXECUTION_ENABLED` | Live execution guard, default `false`. |
+| `DEMO_TRADING_MODE` | Demo trading mode flag, default `true`. |
+| `SCANNER_INTERVAL_SECONDS` | Scanner interval setting placeholder. No scanner logic exists yet. |
+| `RISK_PER_TRADE` | Risk per trade setting placeholder. No risk engine exists yet. |
+| `MAXIMUM_OPEN_TRADES` | Maximum open trades setting placeholder. |
+| `DAILY_LOSS_LIMIT` | Daily loss limit setting placeholder. |
+| `EMERGENCY_STOP` | Emergency stop flag. If active, execution fails closed. |
 
 Frontend `.env.example`:
 
@@ -133,6 +158,22 @@ Docker Compose:
 docker compose config
 ```
 
+## Database Tables
+
+| Table | Purpose |
+| --- | --- |
+| `app_settings` | Persist allowlisted runtime settings only. |
+| `scanner_runs` | Store future scanner run audit envelopes, without scanner logic. |
+| `scanner_decisions` | Store future per-symbol scanner decisions, without generated decisions. |
+| `signals` | Store future signal records, without strategy generation. |
+| `risk_decisions` | Store future risk decision audit records, without risk engine logic. |
+| `orders` | Store future order lifecycle records, without placing or simulating orders. |
+| `fills` | Store future exchange fill records, without mock fills. |
+| `positions` | Store future position state records, without fabricated positions. |
+| `position_events` | Store future position event audit records. |
+| `trade_journal_entries` | Store future journal notes and reviews. |
+| `system_events` | Store system-level audit events. |
+
 ## Batch 1 Verification Results
 
 Executed locally on Windows from branch `codex/batch-1-project-foundation`.
@@ -150,10 +191,25 @@ Executed locally on Windows from branch `codex/batch-1-project-foundation`.
 
 The only local verification gap is Docker CLI availability. The compose file was still parsed as YAML and confirmed to include the required `postgres`, `backend`, and `frontend` services.
 
-## Remaining Batch 2 Scope
+## Batch 2 Verification Results
 
-- Define trading-domain models and persistence tables only after V1 behavior is specified.
-- Add Binance API client integration behind explicit configuration and tests.
-- Add scanner, signal, risk, order, position, and journal behavior in scoped batches.
-- Add execution enablement controls with strong safety checks.
-- Add real data ingestion and observability without mock balances, fake signals, or fabricated performance.
+Executed locally on Windows from branch `codex/batch-2-database-settings`.
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Backend tests | `cd backend && .\.venv\Scripts\python.exe -m pytest` | Passed: `10 passed, 14 warnings` |
+| Backend lint | `cd backend && .\.venv\Scripts\python.exe -m ruff check .` | Passed after import formatting fix |
+| Backend type-check | `cd backend && .\.venv\Scripts\python.exe -m mypy .` | Passed: `Success: no issues found in 31 source files` |
+| Alembic upgrade/downgrade/upgrade | `cd backend && APP_ENV=test DATABASE_URL=sqlite+pysqlite:///./.pytest-local/alembic-verify.db alembic upgrade head && alembic downgrade 202607210001 && alembic upgrade head` | Passed locally against isolated test DB |
+| Alembic heads | `cd backend && .\.venv\Scripts\alembic.exe heads` | Passed: exactly one head, `202607210002 (head)` |
+| Schema and indexes | SQLAlchemy inspector against `.pytest-local/alembic-verify.db` | Passed: all 11 Batch 2 tables and expected indexes present |
+| Frontend lint | `cd frontend && npm.cmd run lint` | Passed |
+| Frontend production build | `cd frontend && npm.cmd run build` | Passed: Vite built `29 modules` |
+| Docker Compose YAML structure | Python YAML parser | Passed: required `postgres`, `backend`, and `frontend` services present |
+| Docker Compose config | `docker compose config` | Not completed locally: Docker CLI is not installed or not available on PATH in this environment. |
+
+The only local verification gap is Docker CLI availability. No Batch 2 code failure is known from the available local checks.
+
+## Remaining Batch 3 Scope
+
+Batch 3 is Binance Demo Market Data Integration only.

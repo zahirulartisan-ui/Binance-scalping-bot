@@ -1,0 +1,85 @@
+from __future__ import annotations
+
+from enum import StrEnum
+
+
+class AppSettingValueType(StrEnum):
+    BOOLEAN = "boolean"
+    INTEGER = "integer"
+    DECIMAL = "decimal"
+    STRING = "string"
+    JSON = "json"
+
+
+class ScannerRunStatus(StrEnum):
+    STARTED = "started"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class ScannerDecisionType(StrEnum):
+    WATCH = "watch"
+    IGNORE = "ignore"
+    SIGNAL_CANDIDATE = "signal_candidate"
+
+
+class SignalStatus(StrEnum):
+    NEW = "new"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+
+
+class OrderStatus(StrEnum):
+    CREATED = "created"
+    SUBMITTED = "submitted"
+    ACKNOWLEDGED = "acknowledged"
+    PARTIALLY_FILLED = "partially_filled"
+    FILLED = "filled"
+    CANCELED = "canceled"
+    REJECTED = "rejected"
+    FAILED = "failed"
+
+
+class OrderSide(StrEnum):
+    BUY = "buy"
+    SELL = "sell"
+
+
+class OrderType(StrEnum):
+    MARKET = "market"
+    LIMIT = "limit"
+    STOP_LIMIT = "stop_limit"
+
+
+class PositionStatus(StrEnum):
+    OPEN = "open"
+    CLOSING = "closing"
+    CLOSED = "closed"
+
+
+class PositionEventType(StrEnum):
+    OPENED = "opened"
+    INCREASED = "increased"
+    REDUCED = "reduced"
+    CLOSED = "closed"
+    STOP_UPDATED = "stop_updated"
+
+
+class RiskDecisionStatus(StrEnum):
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    BLOCKED = "blocked"
+
+
+class JournalEntryType(StrEnum):
+    NOTE = "note"
+    REVIEW = "review"
+    INCIDENT = "incident"
+
+
+class SystemEventLevel(StrEnum):
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+    CRITICAL = "critical"
