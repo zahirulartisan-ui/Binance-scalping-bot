@@ -1,6 +1,6 @@
 # Binance Scalping Bot
 
-Batch 1 established the project foundation for a Binance scalping auto-trading V1 application. Batch 2 added central settings, database session handling, schema foundations, settings APIs, and expanded health reporting. Batch 3 added Binance public market-data integration. Batch 4 adds a deterministic market regime filter. It does not include scanner ranking, coin selection, trading strategies, risk calculation, account access, order execution, mock trading data, or fabricated account metrics.
+Batch 1 established the project foundation for a Binance scalping auto-trading V1 application. Batch 2 added central settings, database session handling, schema foundations, settings APIs, and expanded health reporting. Batch 3 added Binance public market-data integration. Batch 4 added a deterministic market regime filter. Batch 5 adds one deterministic strategy setup engine: Trend Pullback Continuation. It does not include signal grading, account risk sizing, account access, Binance order execution, mock trading data, or fabricated account metrics.
 
 ## Completed Batch 1 Scope
 
@@ -53,6 +53,18 @@ Batch 1 established the project foundation for a Binance scalping auto-trading V
 - Latest per-symbol regime snapshot persistence via migration `202607210004`.
 - Read-only endpoints: `GET /api/v1/regime/market` and `GET /api/v1/regime/{symbol}`.
 - Scanner integration hook through `MarketRegimeService.annotate_scanner_candidates`. A full scanner workflow is not present in this repository yet, so no scanner ranking or coin selection was added.
+
+## Batch 5 Scope
+
+- One deterministic strategy engine: `Trend Pullback Continuation`, version `trend-pullback-v1`.
+- Spot USDT long-only setup generation from scanner-approved symbols and regime-permitted markets.
+- Strategy states: `NO_SETUP`, `FORMING`, `READY`, `INVALIDATED`, `EXPIRED`, `INSUFFICIENT_DATA`, and `BLOCKED_BY_REGIME`.
+- Direction states: `LONG`, `SHORT`, and `NONE`; short conditions are rejected because spot short execution is unsupported.
+- 15m context is delegated to the market-regime result; 5m confirms trend; 1m detects pullback, entry zone, rejection, volume, optional liquidity sweep, optional MSS, stop, target, and RR.
+- Persistence table `strategy_setups` stores deterministic setup results without duplicate rows per setup ID.
+- Read-only strategy endpoints under `/api/v1/strategies`.
+- A small in-process strategy cache keyed by symbol, strategy version, latest closed candle timestamp, and regime.
+- No signal grades, risk sizing, scanner ranking, mock balances, mock PnL, or Binance orders are created.
 
 ## Architecture
 
@@ -133,6 +145,46 @@ Backend `.env.example`:
 | `REGIME_RANGE_COMPRESSION_THRESHOLD` | Recent range threshold for ranging classification. |
 | `REGIME_BTC_BLOCK_VOLATILITY_PERCENT` | BTC volatility safety threshold. |
 | `REGIME_CACHE_SECONDS` | Short TTL for repeated regime calculations. |
+| `STRATEGY_ENABLED` | Enables strategy setup evaluation, default `true`; this does not enable execution. |
+| `STRATEGY_VERSION` | Trend Pullback strategy version, default `trend-pullback-v1`. |
+| `STRATEGY_SUPPORTED_TRADING_MODE` | Supported mode, default `spot_long_only`. |
+| `STRATEGY_ENTRY_TIMEFRAME` | Locked entry timeframe, default `1m`. |
+| `STRATEGY_CONFIRMATION_TIMEFRAME` | Locked confirmation timeframe, default `5m`. |
+| `STRATEGY_CONTEXT_TIMEFRAME` | Locked context timeframe, default `15m`. |
+| `STRATEGY_MINIMUM_CANDLE_HISTORY` | Minimum `1m` and `5m` candles required. |
+| `STRATEGY_EMA_FAST_PERIOD` | Fast EMA period, default `20`. |
+| `STRATEGY_EMA_MID_PERIOD` | Mid EMA period, default `50`. |
+| `STRATEGY_EMA_SLOW_PERIOD` | Slow EMA period, default `200`. |
+| `STRATEGY_EMA_SLOPE_LOOKBACK` | EMA slope lookback candle count. |
+| `STRATEGY_MINIMUM_BULLISH_EMA_SLOPE` | Minimum bullish 5m EMA20 slope. |
+| `STRATEGY_MINIMUM_IMPULSE_PERCENT` | Minimum preceding impulse percent. |
+| `STRATEGY_IMPULSE_LOOKBACK` | Candle lookback for impulse and structural target. |
+| `STRATEGY_MINIMUM_PULLBACK_PERCENT` | Minimum pullback depth. |
+| `STRATEGY_MAXIMUM_PULLBACK_PERCENT` | Maximum pullback depth. |
+| `STRATEGY_MAXIMUM_PULLBACK_CANDLES` | Maximum pullback duration. |
+| `STRATEGY_MAXIMUM_DISTANCE_FROM_EMA20_PERCENT` | Reserved EMA20 distance threshold. |
+| `STRATEGY_MAXIMUM_DISTANCE_FROM_EMA50_PERCENT` | Reserved EMA50 distance threshold. |
+| `STRATEGY_ENTRY_ZONE_ATR_TOLERANCE` | ATR tolerance added around EMA20/EMA50 entry zone. |
+| `STRATEGY_MINIMUM_REJECTION_BODY_RATIO` | Minimum bullish rejection body-to-range ratio. |
+| `STRATEGY_MINIMUM_REJECTION_WICK_RATIO` | Minimum rejection lower-wick-to-range ratio. |
+| `STRATEGY_VOLUME_LOOKBACK` | Rolling volume average lookback. |
+| `STRATEGY_MINIMUM_RECOVERY_VOLUME_RATIO` | Required recovery volume ratio. |
+| `STRATEGY_PULLBACK_VOLUME_CONTRACTION_THRESHOLD` | Maximum pullback volume contraction ratio. |
+| `STRATEGY_LIQUIDITY_SWEEP_MODE` | `required`, `optional`, or `disabled`; default `optional`. |
+| `STRATEGY_LIQUIDITY_SWEEP_LOOKBACK` | Swing-low lookback for sweep detection. |
+| `STRATEGY_MINIMUM_SWEEP_DEPTH_PERCENT` | Minimum sweep depth below prior swing low. |
+| `STRATEGY_MSS_MODE` | `required`, `optional`, or `disabled`; default `optional`. |
+| `STRATEGY_MSS_SWING_LOOKBACK` | Swing-high lookback for MSS detection. |
+| `STRATEGY_MINIMUM_MSS_BREAK_PERCENT` | Minimum closed break above swing high. |
+| `STRATEGY_STOP_LOSS_ATR_BUFFER` | ATR buffer below structural stop reference. |
+| `STRATEGY_MINIMUM_STOP_PERCENT` | Minimum valid stop distance percent. |
+| `STRATEGY_MAXIMUM_STOP_PERCENT` | Maximum valid stop distance percent. |
+| `STRATEGY_MINIMUM_REWARD_TO_RISK` | Minimum RR, default `1.5`. |
+| `STRATEGY_MAXIMUM_SETUP_AGE_SECONDS` | Setup expiry age. |
+| `STRATEGY_MAXIMUM_PRICE_DISTANCE_AFTER_ZONE_PERCENT` | Maximum allowed distance above entry zone before expiry. |
+| `STRATEGY_MAXIMUM_SPREAD_BPS` | Reserved strategy spread threshold. |
+| `STRATEGY_CACHE_TTL_SECONDS` | In-process strategy evaluation cache TTL. |
+| `STRATEGY_PERSISTENCE_ENABLED` | Persist deterministic setup rows when true. |
 
 Frontend `.env.example`:
 
@@ -220,6 +272,7 @@ docker compose config
 | `market_snapshots` | Store current public price/book snapshots and spread bps. |
 | `market_data_cycles` | Store market-data runner cycle status, counts, duration, and rejections. |
 | `market_regime_snapshots` | Store latest deterministic regime result per symbol. |
+| `strategy_setups` | Store deterministic Trend Pullback setup evidence, state, prices, RR, and reasons. |
 
 ## Market Data Endpoints
 
@@ -241,6 +294,27 @@ docker compose config
 7. Return ranging/no-trade when evidence is weak or conflicting.
 
 `ABNORMAL_MARKET`, `HIGH_VOLATILITY`, `NO_TRADE`, and `INSUFFICIENT_DATA` always return `BLOCK_NEW_ENTRIES`. BTC market-wide blocks also force `BLOCK_NEW_ENTRIES`.
+
+## Trend Pullback Strategy Rules
+
+The strategy evaluates only scanner-approved USDT spot symbols. It blocks a symbol when scanner tradeability is false, regime permission blocks new entries, BTC market-wide block is active, the regime is not `TRENDING_BULLISH`, candle data is missing/stale/discontinuous, RR is below `1.5`, or the setup state is not `READY`.
+
+Default long trend evidence requires 5m EMA20 above EMA50, EMA50 above EMA200 when enough history exists, positive EMA20 slope, price above 5m EMA50, `TRENDING_BULLISH` regime, and no BTC market-wide block. Bearish or short-only conditions are returned as `BLOCKED_BY_REGIME` with explicit spot-short unsupported reasons.
+
+Pullback detection requires a measurable preceding impulse, configured retracement depth, no break of pullback structure, and a bounded pullback duration. The entry zone is EMA20/EMA50 plus ATR tolerance, with lower/upper bounds, preferred entry, current distance, and zone position. A setup becomes `READY` only after rejection candle evidence and deterministic volume confirmation pass. Liquidity sweep and MSS are optional by default and return measured evidence without being silently required.
+
+Stop-loss priority is structural: below liquidity-sweep low when available, otherwise below pullback swing low, with an ATR buffer. Take-profit uses the nearest structural target when it satisfies the minimum RR, otherwise a fixed minimum-RR target. RR is calculated as `(take_profit - entry) / (entry - stop_loss)` and must be at least `1.5`.
+
+Setup lifecycle: below-zone setups are `FORMING`, ready setups are eligible only for Phase 6 scoring, broken stop structures are `INVALIDATED`, and setups too far above the zone or too old are `EXPIRED`. This batch never submits real or demo orders.
+
+## Strategy Endpoints
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/v1/strategies` | List available strategy metadata. |
+| `GET /api/v1/strategies/trend-pullback/{symbol}` | Evaluate a scanner-approved symbol, with optional `refresh`. |
+| `GET /api/v1/strategies/setups` | List persisted setup rows with `state`, `eligible_only`, `symbol`, and `limit` filters. |
+| `GET /api/v1/strategies/setups/{setup_id}` | Read one persisted setup by deterministic setup ID. |
 
 ## Batch 1 Verification Results
 
@@ -316,6 +390,26 @@ Executed locally on Windows from branch `codex/batch-4-market-regime`.
 
 The only local verification gap is Docker CLI availability. Existing scanner workflow integration is limited to a service hook because the repository does not yet contain a scanner implementation.
 
-## Remaining Batch 5 Scope
+## Batch 5 Verification Results
 
-Coin Scanner and Candidate Ranking only.
+Executed locally on Windows from branch `codex/batch-5-scalping-strategy`.
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Backend tests | `cd backend && .\.venv\Scripts\python.exe -m pytest` | Passed: `39 passed, 44 warnings` |
+| Backend lint | `cd backend && .\.venv\Scripts\python.exe -m ruff check .` | Passed: `All checks passed!` |
+| Backend type-check | `cd backend && .\.venv\Scripts\python.exe -m mypy .` | Passed: `Success: no issues found in 57 source files` |
+| Alembic upgrade/downgrade/upgrade | `APP_ENV=test DATABASE_URL=sqlite+pysqlite:///./.pytest-local/alembic-batch5.db alembic upgrade head && alembic downgrade 202607210004 && alembic upgrade head` | Passed |
+| Alembic heads | `cd backend && .\.venv\Scripts\alembic.exe heads` | Passed: exactly one head, `202607210005 (head)` |
+| Schema and indexes | SQLAlchemy inspector against `.pytest-local/alembic-batch5.db` | Passed: `strategy_setups`, `ohlcv_candles`, `ix_strategy_setups_eligible_expires`, and `ix_strategy_setups_symbol_state_evaluated` present |
+| Application import | `cd backend && .\.venv\Scripts\python.exe -c "from app.main import create_app; app=create_app(); print(app.title)"` | Passed: `Binance Scalping Bot` |
+| Frontend lint | `cd frontend && npm.cmd run lint` | Passed |
+| Frontend production build | `cd frontend && npm.cmd run build` | Passed after sandbox escalation: Vite built `29 modules` |
+| Docker Compose YAML structure | Python YAML parser | Passed: required `postgres`, `backend`, and `frontend` services present |
+| Docker Compose config | `docker compose config` | Not completed locally: Docker CLI is not installed or not available on PATH in this environment. |
+
+The only local verification gap is Docker CLI availability.
+
+## Remaining Batch 6 Scope
+
+Signal grading only: assign setup quality grades from deterministic strategy evidence. Do not implement account risk sizing, Binance order submission, position management, real trading, Futures, leverage, or short execution in Batch 6.
