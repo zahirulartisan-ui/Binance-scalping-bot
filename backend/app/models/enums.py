@@ -83,3 +83,16 @@ class SystemEventLevel(StrEnum):
     WARNING = "warning"
     ERROR = "error"
     CRITICAL = "critical"
+
+
+class CandleTimeframe(StrEnum):
+    ONE_MINUTE = "1m"
+    FIVE_MINUTES = "5m"
+
+
+class MarketDataCycleStatus(StrEnum):
+    STARTED = "started"
+    COMPLETED = "completed"
+    PARTIAL_FAILURE = "partial_failure"
+    FAILED = "failed"
+    SKIPPED = "skipped"

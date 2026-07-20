@@ -1,6 +1,6 @@
 # Binance Scalping Bot
 
-Batch 1 established the project foundation for a Binance scalping auto-trading V1 application. Batch 2 adds central settings, database session handling, schema foundations, settings APIs, and expanded health reporting. It does not include Binance API integration, scanner logic, strategies, order execution, mock trading data, or fabricated account metrics.
+Batch 1 established the project foundation for a Binance scalping auto-trading V1 application. Batch 2 added central settings, database session handling, schema foundations, settings APIs, and expanded health reporting. Batch 3 adds Binance public market-data integration only. It does not include scanner ranking, coin selection, trading strategies, risk calculation, account access, order execution, mock trading data, or fabricated account metrics.
 
 ## Completed Batch 1 Scope
 
@@ -32,6 +32,17 @@ Batch 1 established the project foundation for a Binance scalping auto-trading V
 - Initial production-structured database models and migration for application settings, scanner audit data, signal/order/fill/position/risk/journal/system-event records.
 - Public authenticated-ready settings endpoints: `GET /api/v1/settings` and `PATCH /api/v1/settings`.
 - Expanded `/health` response for app, database, environment, demo trading, execution, emergency stop, and migration readiness.
+
+## Batch 3 Scope
+
+- Public Binance market-data client for exchange info, book ticker, recent price, and `1m`/`5m` klines.
+- Bounded timeout, retry, and exponential backoff handling for public REST calls.
+- Active USDT spot symbol metadata refresh with inactive, suspended, leveraged-token, non-spot, and invalid symbol rejection.
+- Closed-candle validation and idempotent OHLCV persistence.
+- Live market snapshot validation and persistence with spread basis points.
+- Lifecycle-safe background market-data runner, disabled by default, with overlap prevention and graceful shutdown.
+- Market-data read endpoints with safe parameter validation and explicit empty states.
+- Migration `202607210003` for Batch 3 market-data tables.
 
 ## Architecture
 
@@ -69,6 +80,7 @@ Root `.env.example`:
 | `BACKEND_EXECUTION_ENABLED` | Must default to `false`. |
 | `BACKEND_DEMO_TRADING_MODE` | Demo trading mode flag, default `true`. |
 | `BACKEND_EMERGENCY_STOP` | Emergency stop flag, default `false`. |
+| `BACKEND_MARKET_DATA_COLLECTION_ENABLED` | Background market-data collection flag, default `false`. |
 | `FRONTEND_API_BASE_URL` | Browser-facing backend base URL. |
 
 Backend `.env.example`:
@@ -91,6 +103,14 @@ Backend `.env.example`:
 | `MAXIMUM_OPEN_TRADES` | Maximum open trades setting placeholder. |
 | `DAILY_LOSS_LIMIT` | Daily loss limit setting placeholder. |
 | `EMERGENCY_STOP` | Emergency stop flag. If active, execution fails closed. |
+| `BINANCE_MARKET_DATA_BASE_URL` | Public Binance REST base URL. |
+| `BINANCE_MARKET_DATA_TIMEOUT_SECONDS` | Public market-data HTTP timeout. |
+| `BINANCE_MARKET_DATA_MAX_RETRIES` | Bounded retry count. |
+| `BINANCE_MARKET_DATA_BACKOFF_SECONDS` | Base exponential backoff delay. |
+| `MARKET_DATA_COLLECTION_ENABLED` | Background collection flag, default `false`. |
+| `MARKET_DATA_SYMBOL_REFRESH_SECONDS` | Symbol metadata refresh cadence. |
+| `MARKET_DATA_CYCLE_INTERVAL_SECONDS` | Market-data runner cycle interval. |
+| `MARKET_DATA_SYMBOLS` | Comma-separated USDT symbols for collection. |
 
 Frontend `.env.example`:
 
@@ -173,6 +193,19 @@ docker compose config
 | `position_events` | Store future position event audit records. |
 | `trade_journal_entries` | Store future journal notes and reviews. |
 | `system_events` | Store system-level audit events. |
+| `exchange_symbols` | Store active Binance USDT spot symbol metadata. |
+| `ohlcv_candles` | Store validated closed `1m` and `5m` OHLCV candles. |
+| `market_snapshots` | Store current public price/book snapshots and spread bps. |
+| `market_data_cycles` | Store market-data runner cycle status, counts, duration, and rejections. |
+
+## Market Data Endpoints
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/v1/market-data/status` | Return collection flag, runner activity, and latest cycle status. |
+| `GET /api/v1/market-data/symbols` | Return persisted eligible symbol metadata. |
+| `GET /api/v1/market-data/candles` | Return persisted candles by symbol/timeframe/date range/limit. |
+| `GET /api/v1/market-data/snapshot` | Return the latest persisted snapshot for a symbol, or `null`. |
 
 ## Batch 1 Verification Results
 
@@ -210,6 +243,25 @@ Executed locally on Windows from branch `codex/batch-2-database-settings`.
 
 The only local verification gap is Docker CLI availability. No Batch 2 code failure is known from the available local checks.
 
-## Remaining Batch 3 Scope
+## Batch 3 Verification Results
 
-Batch 3 is Binance Demo Market Data Integration only.
+Executed locally on Windows from branch `codex/batch-3-market-data`.
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Backend tests | `cd backend && .\.venv\Scripts\python.exe -m pytest` | Passed: `28 passed, 36 warnings` |
+| Backend lint | `cd backend && .\.venv\Scripts\python.exe -m ruff check .` | Passed: `All checks passed!` |
+| Backend type-check | `cd backend && .\.venv\Scripts\python.exe -m mypy .` | Passed: `Success: no issues found in 43 source files` |
+| Alembic upgrade/downgrade/upgrade | `APP_ENV=test DATABASE_URL=sqlite+pysqlite:///./.pytest-local/alembic-batch3.db alembic upgrade head && alembic downgrade 202607210002 && alembic upgrade head` | Passed |
+| Alembic heads | `cd backend && .\.venv\Scripts\alembic.exe heads` | Passed: exactly one head, `202607210003 (head)` |
+| Schema and indexes | SQLAlchemy inspector against `.pytest-local/alembic-batch3.db` | Passed: Batch 3 tables and expected indexes present |
+| Frontend lint | `cd frontend && npm.cmd run lint` | Passed |
+| Frontend production build | `cd frontend && npm.cmd run build` | Passed: Vite built `29 modules` |
+| Docker Compose YAML structure | Python YAML parser | Passed: required `postgres`, `backend`, and `frontend` services present |
+| Docker Compose config | `docker compose config` | Not completed locally: Docker CLI is not installed or not available on PATH in this environment. |
+
+The only local verification gap is Docker CLI availability.
+
+## Remaining Batch 4 Scope
+
+Batch 4 is Coin Scanner and Candidate Ranking only.
