@@ -22,6 +22,16 @@ class LogLevel(StrEnum):
     CRITICAL = "CRITICAL"
 
 
+class StrategyMode(StrEnum):
+    SPOT_LONG_ONLY = "spot_long_only"
+
+
+class EvidenceMode(StrEnum):
+    REQUIRED = "required"
+    OPTIONAL = "optional"
+    DISABLED = "disabled"
+
+
 class Settings(BaseSettings):
     app_name: str = "Binance Scalping Bot"
     app_env: AppEnvironment = AppEnvironment.DEVELOPMENT
@@ -59,6 +69,46 @@ class Settings(BaseSettings):
     regime_range_compression_threshold: float = Field(default=1.0, ge=0.01, le=50)
     regime_btc_block_volatility_percent: float = Field(default=3.0, ge=0.1, le=100)
     regime_cache_seconds: int = Field(default=30, ge=1, le=3600)
+    strategy_enabled: bool = True
+    strategy_version: str = "trend-pullback-v1"
+    strategy_supported_trading_mode: StrategyMode = StrategyMode.SPOT_LONG_ONLY
+    strategy_entry_timeframe: str = "1m"
+    strategy_confirmation_timeframe: str = "5m"
+    strategy_context_timeframe: str = "15m"
+    strategy_minimum_candle_history: int = Field(default=80, ge=50, le=500)
+    strategy_ema_fast_period: int = Field(default=20, ge=2, le=100)
+    strategy_ema_mid_period: int = Field(default=50, ge=5, le=200)
+    strategy_ema_slow_period: int = Field(default=200, ge=50, le=500)
+    strategy_ema_slope_lookback: int = Field(default=5, ge=1, le=50)
+    strategy_minimum_bullish_ema_slope: float = Field(default=0.001, ge=0, le=10)
+    strategy_minimum_impulse_percent: float = Field(default=0.35, gt=0, le=20)
+    strategy_impulse_lookback: int = Field(default=20, ge=5, le=100)
+    strategy_minimum_pullback_percent: float = Field(default=0.08, gt=0, le=10)
+    strategy_maximum_pullback_percent: float = Field(default=1.2, gt=0, le=20)
+    strategy_maximum_pullback_candles: int = Field(default=12, ge=2, le=60)
+    strategy_maximum_distance_from_ema20_percent: float = Field(default=0.35, ge=0, le=10)
+    strategy_maximum_distance_from_ema50_percent: float = Field(default=0.75, ge=0, le=10)
+    strategy_entry_zone_atr_tolerance: float = Field(default=0.25, ge=0, le=5)
+    strategy_minimum_rejection_body_ratio: float = Field(default=0.45, ge=0, le=1)
+    strategy_minimum_rejection_wick_ratio: float = Field(default=0.25, ge=0, le=1)
+    strategy_volume_lookback: int = Field(default=20, ge=5, le=100)
+    strategy_minimum_recovery_volume_ratio: float = Field(default=1.2, ge=0, le=20)
+    strategy_pullback_volume_contraction_threshold: float = Field(default=0.95, ge=0, le=5)
+    strategy_liquidity_sweep_mode: EvidenceMode = EvidenceMode.OPTIONAL
+    strategy_liquidity_sweep_lookback: int = Field(default=12, ge=3, le=100)
+    strategy_minimum_sweep_depth_percent: float = Field(default=0.03, ge=0, le=5)
+    strategy_mss_mode: EvidenceMode = EvidenceMode.OPTIONAL
+    strategy_mss_swing_lookback: int = Field(default=8, ge=3, le=100)
+    strategy_minimum_mss_break_percent: float = Field(default=0.03, ge=0, le=5)
+    strategy_stop_loss_atr_buffer: float = Field(default=0.2, ge=0, le=5)
+    strategy_minimum_stop_percent: float = Field(default=0.05, gt=0, le=10)
+    strategy_maximum_stop_percent: float = Field(default=1.25, gt=0, le=20)
+    strategy_minimum_reward_to_risk: float = Field(default=1.5, ge=1, le=10)
+    strategy_maximum_setup_age_seconds: int = Field(default=900, ge=60, le=86400)
+    strategy_maximum_price_distance_after_zone_percent: float = Field(default=0.6, ge=0, le=10)
+    strategy_maximum_spread_bps: float = Field(default=12.0, ge=0, le=1000)
+    strategy_cache_ttl_seconds: int = Field(default=15, ge=1, le=3600)
+    strategy_persistence_enabled: bool = True
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -102,6 +152,20 @@ class Settings(BaseSettings):
                 raise ValueError("production mode cannot allow wildcard CORS origins")
             if "localhost" in self.database_url or "127.0.0.1" in self.database_url:
                 raise ValueError("production mode cannot use a local database URL")
+        if self.strategy_entry_timeframe != "1m":
+            raise ValueError("trend pullback strategy entry timeframe must be 1m")
+        if self.strategy_confirmation_timeframe != "5m":
+            raise ValueError("trend pullback strategy confirmation timeframe must be 5m")
+        if self.strategy_context_timeframe != "15m":
+            raise ValueError("trend pullback strategy context timeframe must be 15m")
+        if self.strategy_ema_fast_period >= self.strategy_ema_mid_period:
+            raise ValueError("strategy EMA fast period must be below mid period")
+        if self.strategy_ema_mid_period >= self.strategy_ema_slow_period:
+            raise ValueError("strategy EMA mid period must be below slow period")
+        if self.strategy_minimum_pullback_percent >= self.strategy_maximum_pullback_percent:
+            raise ValueError("strategy minimum pullback must be below maximum pullback")
+        if self.strategy_minimum_stop_percent >= self.strategy_maximum_stop_percent:
+            raise ValueError("strategy minimum stop must be below maximum stop")
         return self
 
     @field_serializer("binance_demo_api_key", "binance_demo_api_secret")
@@ -135,6 +199,14 @@ class Settings(BaseSettings):
             "market_data_symbols": self.market_data_symbols,
             "regime_minimum_candles": self.regime_minimum_candles,
             "regime_cache_seconds": self.regime_cache_seconds,
+            "strategy_enabled": self.strategy_enabled,
+            "strategy_version": self.strategy_version,
+            "strategy_supported_trading_mode": self.strategy_supported_trading_mode.value,
+            "strategy_entry_timeframe": self.strategy_entry_timeframe,
+            "strategy_confirmation_timeframe": self.strategy_confirmation_timeframe,
+            "strategy_context_timeframe": self.strategy_context_timeframe,
+            "strategy_minimum_reward_to_risk": self.strategy_minimum_reward_to_risk,
+            "strategy_persistence_enabled": self.strategy_persistence_enabled,
         }
 
 

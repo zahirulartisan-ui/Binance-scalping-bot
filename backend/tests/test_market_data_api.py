@@ -75,5 +75,5 @@ def test_market_data_api_returns_records(client: TestClient, db_session: Session
 
 def test_market_data_api_parameter_validation(client: TestClient) -> None:
     assert client.get("/api/v1/market-data/candles?symbol=BAD&timeframe=1m").status_code == 422
-    assert client.get("/api/v1/market-data/candles?symbol=BTCUSDT&timeframe=15m").status_code == 422
+    assert client.get("/api/v1/market-data/candles?symbol=BTCUSDT&timeframe=30m").status_code == 422
     assert client.get("/api/v1/market-data/symbols?limit=9999").status_code == 422

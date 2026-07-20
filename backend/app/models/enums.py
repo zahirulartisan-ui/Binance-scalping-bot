@@ -88,6 +88,7 @@ class SystemEventLevel(StrEnum):
 class CandleTimeframe(StrEnum):
     ONE_MINUTE = "1m"
     FIVE_MINUTES = "5m"
+    FIFTEEN_MINUTES = "15m"
 
 
 class MarketDataCycleStatus(StrEnum):
@@ -119,3 +120,19 @@ class TrendDirection(StrEnum):
     BULLISH = "bullish"
     BEARISH = "bearish"
     FLAT = "flat"
+
+
+class StrategySetupState(StrEnum):
+    NO_SETUP = "NO_SETUP"
+    FORMING = "FORMING"
+    READY = "READY"
+    INVALIDATED = "INVALIDATED"
+    EXPIRED = "EXPIRED"
+    INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
+    BLOCKED_BY_REGIME = "BLOCKED_BY_REGIME"
+
+
+class StrategyDirection(StrEnum):
+    LONG = "LONG"
+    SHORT = "SHORT"
+    NONE = "NONE"
