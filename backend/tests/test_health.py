@@ -8,4 +8,8 @@ def test_health_reports_disabled_execution(client: TestClient) -> None:
     payload = response.json()
     assert payload["application"]["status"] == "ok"
     assert payload["database"]["status"] == "ok"
+    assert payload["environment"]["status"] == "test"
+    assert payload["demo_trading"]["status"] == "enabled"
     assert payload["execution"]["status"] == "disabled"
+    assert payload["emergency_stop"]["status"] == "inactive"
+    assert payload["migrations"]["status"] == "ready"

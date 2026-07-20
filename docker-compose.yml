@@ -20,10 +20,18 @@ services:
       context: ./backend
     environment:
       APP_NAME: Binance Scalping Bot
-      APP_ENV: docker
+      APP_ENV: ${BACKEND_APP_ENV:-development}
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
       LOG_LEVEL: INFO
       DATABASE_URL: ${BACKEND_DATABASE_URL:-postgresql+psycopg://postgres:postgres@postgres:5432/binance_scalping_bot}
       EXECUTION_ENABLED: ${BACKEND_EXECUTION_ENABLED:-false}
+      DEMO_TRADING_MODE: ${BACKEND_DEMO_TRADING_MODE:-true}
+      SCANNER_INTERVAL_SECONDS: 30
+      RISK_PER_TRADE: 0.01
+      MAXIMUM_OPEN_TRADES: 3
+      DAILY_LOSS_LIMIT: 0.03
+      EMERGENCY_STOP: ${BACKEND_EMERGENCY_STOP:-false}
       ALLOWED_ORIGINS: http://localhost:5173
     ports:
       - "8000:8000"

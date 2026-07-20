@@ -1,6 +1,6 @@
 from collections.abc import Generator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.settings import get_settings
@@ -15,5 +15,15 @@ def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:
         yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
+
+
+def verify_database_connectivity() -> bool:
+    with engine.connect() as connection:
+        connection.execute(text("SELECT 1"))
+    return True
