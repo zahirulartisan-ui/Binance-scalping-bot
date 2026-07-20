@@ -96,3 +96,26 @@ class MarketDataCycleStatus(StrEnum):
     PARTIAL_FAILURE = "partial_failure"
     FAILED = "failed"
     SKIPPED = "skipped"
+
+
+class MarketRegime(StrEnum):
+    TRENDING_BULLISH = "TRENDING_BULLISH"
+    TRENDING_BEARISH = "TRENDING_BEARISH"
+    RANGING = "RANGING"
+    HIGH_VOLATILITY = "HIGH_VOLATILITY"
+    ABNORMAL_MARKET = "ABNORMAL_MARKET"
+    NO_TRADE = "NO_TRADE"
+    INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
+
+
+class EntryPermission(StrEnum):
+    ALLOW_LONG = "ALLOW_LONG"
+    ALLOW_SHORT = "ALLOW_SHORT"
+    ALLOW_BOTH = "ALLOW_BOTH"
+    BLOCK_NEW_ENTRIES = "BLOCK_NEW_ENTRIES"
+
+
+class TrendDirection(StrEnum):
+    BULLISH = "bullish"
+    BEARISH = "bearish"
+    FLAT = "flat"
