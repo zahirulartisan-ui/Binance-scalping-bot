@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from enum import StrEnum
 from functools import lru_cache
 from typing import Any
@@ -125,6 +126,12 @@ class Settings(BaseSettings):
     @classmethod
     def parse_allowed_origins(cls, value: str | list[str]) -> list[str]:
         if isinstance(value, str):
+            stripped = value.strip()
+            if stripped.startswith("["):
+                parsed = json.loads(stripped)
+                if not isinstance(parsed, list):
+                    raise ValueError("ALLOWED_ORIGINS JSON value must be a list")
+                return [str(origin).strip() for origin in parsed if str(origin).strip()]
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
 
@@ -132,6 +139,12 @@ class Settings(BaseSettings):
     @classmethod
     def parse_market_data_symbols(cls, value: str | list[str]) -> list[str]:
         if isinstance(value, str):
+            stripped = value.strip()
+            if stripped.startswith("["):
+                parsed = json.loads(stripped)
+                if not isinstance(parsed, list):
+                    raise ValueError("MARKET_DATA_SYMBOLS JSON value must be a list")
+                return [str(symbol).strip().upper() for symbol in parsed if str(symbol).strip()]
             return [symbol.strip().upper() for symbol in value.split(",") if symbol.strip()]
         return [symbol.upper() for symbol in value]
 
