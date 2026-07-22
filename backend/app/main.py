@@ -8,6 +8,7 @@ from app.database.session import SessionLocal, verify_database_connectivity
 from app.services.binance_client import BinanceMarketDataClient
 from app.services.market_data_runner import MarketDataRunner
 from app.services.migration_service import apply_migrations
+from app.services.trade_management_runner import TradeManagementRunner
 
 
 def create_app() -> FastAPI:
@@ -17,6 +18,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title=settings.app_name)
     app.state.database_available = False
     app.state.market_data_runner = None
+    app.state.trade_management_runner = None
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.allowed_origins,
@@ -38,22 +40,29 @@ def create_app() -> FastAPI:
             app.state.database_available = False
             if settings.effective_execution_enabled:
                 raise
-        if app.state.database_available and settings.market_data_collection_enabled:
+        if app.state.database_available:
             client = BinanceMarketDataClient(
                 base_url=settings.binance_market_data_base_url,
                 timeout_seconds=settings.binance_market_data_timeout_seconds,
                 max_retries=settings.binance_market_data_max_retries,
                 backoff_seconds=settings.binance_market_data_backoff_seconds,
             )
-            runner = MarketDataRunner(settings, SessionLocal, client)
-            app.state.market_data_runner = runner
-            runner.start()
+            if settings.market_data_collection_enabled:
+                runner = MarketDataRunner(settings, SessionLocal, client)
+                app.state.market_data_runner = runner
+                runner.start()
+            trade_management_runner = TradeManagementRunner(settings, SessionLocal, client)
+            app.state.trade_management_runner = trade_management_runner
+            trade_management_runner.start()
 
     @app.on_event("shutdown")
     def stop_market_data_runner() -> None:
         runner = app.state.market_data_runner
         if runner is not None:
             runner.stop()
+        trade_management_runner = app.state.trade_management_runner
+        if trade_management_runner is not None:
+            trade_management_runner.stop()
 
     return app
 

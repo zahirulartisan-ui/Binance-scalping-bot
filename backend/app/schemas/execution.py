@@ -17,6 +17,7 @@ class ExecutionStatusResponse(BaseModel):
     daily_loss_limit_amount: Decimal
     maximum_open_trades: int
     open_positions: int
+    unsupported_open_positions: int
     realized_pnl_today: Decimal
     executable: bool
     reasons: list[str]

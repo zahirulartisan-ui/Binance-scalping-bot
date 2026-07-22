@@ -154,6 +154,7 @@ def read_execution_status(
         daily_loss_limit_amount=snapshot.daily_loss_limit_amount,
         maximum_open_trades=snapshot.maximum_open_trades,
         open_positions=snapshot.open_positions,
+        unsupported_open_positions=snapshot.unsupported_open_positions,
         realized_pnl_today=snapshot.realized_pnl_today,
         executable=snapshot.executable,
         reasons=snapshot.reasons,

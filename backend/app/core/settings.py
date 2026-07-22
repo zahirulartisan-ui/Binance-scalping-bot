@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     maximum_open_trades: int = Field(default=3, ge=0, le=50)
     daily_loss_limit: float = Field(default=0.03, gt=0, le=0.5)
     emergency_stop: bool = False
+    position_monitoring_enabled: bool = True
+    position_monitoring_interval_seconds: int = Field(default=15, ge=5, le=300)
+    position_monitoring_price_max_age_seconds: int = Field(default=75, ge=5, le=600)
     binance_market_data_base_url: str = "https://api.binance.com"
     binance_market_data_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
     binance_market_data_max_retries: int = Field(default=2, ge=0, le=5)
@@ -226,6 +229,9 @@ class Settings(BaseSettings):
             "maximum_open_trades": self.maximum_open_trades,
             "daily_loss_limit": self.daily_loss_limit,
             "emergency_stop": self.emergency_stop,
+            "position_monitoring_enabled": self.position_monitoring_enabled,
+            "position_monitoring_interval_seconds": self.position_monitoring_interval_seconds,
+            "position_monitoring_price_max_age_seconds": self.position_monitoring_price_max_age_seconds,
             "market_data_collection_enabled": self.market_data_collection_enabled,
             "market_data_symbol_refresh_seconds": self.market_data_symbol_refresh_seconds,
             "market_data_cycle_interval_seconds": self.market_data_cycle_interval_seconds,

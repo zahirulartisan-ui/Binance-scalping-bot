@@ -10,6 +10,7 @@ def test_settings_api_returns_public_non_secret_settings(client: TestClient) -> 
     assert "binance_demo_api_secret" not in payload
     assert "database_url" not in payload
     assert payload["execution_enabled"] is False
+    assert payload["position_monitoring_enabled"] is True
 
 
 def test_settings_api_validates_and_persists_runtime_updates(client: TestClient) -> None:
@@ -21,6 +22,8 @@ def test_settings_api_validates_and_persists_runtime_updates(client: TestClient)
             "maximum_open_trades": 4,
             "emergency_stop": True,
             "execution_enabled": False,
+            "position_monitoring_enabled": False,
+            "position_monitoring_interval_seconds": 30,
         },
     )
 
@@ -31,6 +34,8 @@ def test_settings_api_validates_and_persists_runtime_updates(client: TestClient)
     assert payload["maximum_open_trades"] == 4
     assert payload["emergency_stop"] is True
     assert payload["execution_enabled"] is False
+    assert payload["position_monitoring_enabled"] is False
+    assert payload["position_monitoring_interval_seconds"] == 30
 
 
 def test_settings_api_rejects_unsafe_execution_update(client: TestClient) -> None:

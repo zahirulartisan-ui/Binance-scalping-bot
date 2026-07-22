@@ -20,6 +20,9 @@ RUNTIME_SETTING_TYPES: dict[str, AppSettingValueType] = {
     "maximum_open_trades": AppSettingValueType.INTEGER,
     "daily_loss_limit": AppSettingValueType.DECIMAL,
     "emergency_stop": AppSettingValueType.BOOLEAN,
+    "position_monitoring_enabled": AppSettingValueType.BOOLEAN,
+    "position_monitoring_interval_seconds": AppSettingValueType.INTEGER,
+    "position_monitoring_price_max_age_seconds": AppSettingValueType.INTEGER,
 }
 
 

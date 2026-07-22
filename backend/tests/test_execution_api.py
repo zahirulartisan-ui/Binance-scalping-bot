@@ -64,6 +64,7 @@ def test_execution_status_reports_disabled_by_default(client: TestClient) -> Non
     payload = response.json()
     assert payload["execution_enabled"] is False
     assert payload["demo_trading_mode"] is True
+    assert payload["unsupported_open_positions"] == 0
     assert payload["executable"] is False
     assert "execution_disabled" in payload["reasons"]
 
@@ -113,6 +114,54 @@ def test_execute_signal_blocks_when_max_open_trades_reached(
 
     assert response.status_code == 409
     assert response.json()["detail"] == "maximum_open_trades_reached"
+
+
+def test_execution_status_reports_unsupported_open_positions(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    db_session.add(
+        Position(
+            symbol="BTCUSDT",
+            status=PositionStatus.OPEN,
+            side=OrderSide.BUY,
+            quantity=Decimal("1.00000000"),
+            average_entry_price=Decimal("100.00000000"),
+            metadata_json={"mode": "live"},
+        )
+    )
+    db_session.commit()
+
+    response = client.get("/api/v1/execution/status")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["unsupported_open_positions"] == 1
+    assert "unsupported_open_positions_present" in payload["reasons"]
+
+
+def test_close_position_blocks_non_demo_positions(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    position = Position(
+        symbol="BTCUSDT",
+        status=PositionStatus.OPEN,
+        side=OrderSide.BUY,
+        quantity=Decimal("1.00000000"),
+        average_entry_price=Decimal("100.00000000"),
+        metadata_json={"mode": "live"},
+    )
+    db_session.add(position)
+    db_session.commit()
+
+    response = client.post(
+        f"/api/v1/execution/positions/{position.id}/close",
+        json={"exit_price": 101.0},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "position_mode_not_supported"
 
 
 def test_close_position_creates_demo_exit_and_realized_pnl(
@@ -222,6 +271,33 @@ def test_monitor_run_closes_position_when_stop_is_hit(
     assert payload["action_count"] == 1
     assert payload["actions"][0]["action"] == "stop_loss_close"
     assert payload["actions"][0]["position"]["status"] == "closed"
+
+
+def test_monitor_run_skips_non_demo_positions(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    db_session.add(
+        Position(
+            symbol="BTCUSDT",
+            status=PositionStatus.OPEN,
+            side=OrderSide.BUY,
+            quantity=Decimal("1.00000000"),
+            average_entry_price=Decimal("100.00000000"),
+            metadata_json={"mode": "live", "stop_loss_price": "95.0"},
+        )
+    )
+    db_session.commit()
+
+    response = client.post(
+        "/api/v1/execution/monitor/run",
+        json={"prices": [{"symbol": "BTCUSDT", "price": 94.0}]},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["checked_count"] == 1
+    assert payload["action_count"] == 0
 
 
 def test_read_positions_returns_execution_positions(

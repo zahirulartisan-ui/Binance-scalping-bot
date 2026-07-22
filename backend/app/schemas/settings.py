@@ -22,6 +22,9 @@ class PublicSettings(BaseModel):
     maximum_open_trades: int
     daily_loss_limit: float
     emergency_stop: bool
+    position_monitoring_enabled: bool
+    position_monitoring_interval_seconds: int
+    position_monitoring_price_max_age_seconds: int
 
 
 class RuntimeSettingsPatch(BaseModel):
@@ -35,6 +38,9 @@ class RuntimeSettingsPatch(BaseModel):
     maximum_open_trades: int | None = Field(default=None, ge=0, le=50)
     daily_loss_limit: float | None = Field(default=None, gt=0, le=0.5)
     emergency_stop: bool | None = None
+    position_monitoring_enabled: bool | None = None
+    position_monitoring_interval_seconds: int | None = Field(default=None, ge=5, le=300)
+    position_monitoring_price_max_age_seconds: int | None = Field(default=None, ge=5, le=600)
 
     @field_validator("allowed_origins")
     @classmethod

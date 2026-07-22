@@ -63,6 +63,7 @@ class ExecutionStatusSnapshot:
     daily_loss_limit_amount: Decimal
     maximum_open_trades: int
     open_positions: int
+    unsupported_open_positions: int
     realized_pnl_today: Decimal
     executable: bool
     reasons: list[str]
@@ -99,6 +100,7 @@ class ExecutionService:
     def get_status(self, db: Session) -> ExecutionStatusSnapshot:
         runtime = self._runtime_settings(db)
         open_positions = self._count_open_positions(db)
+        unsupported_open_positions = self._count_unsupported_open_positions(db)
         realized_pnl_today = self._realized_pnl_today(db)
         daily_loss_limit_amount = (
             runtime["demo_account_balance"] * runtime["daily_loss_limit"]
@@ -110,6 +112,8 @@ class ExecutionService:
             reasons.append("emergency_stop_active")
         if not runtime["demo_trading_mode"]:
             reasons.append("live_execution_not_supported")
+        if unsupported_open_positions > 0:
+            reasons.append("unsupported_open_positions_present")
         if open_positions >= runtime["maximum_open_trades"]:
             reasons.append("maximum_open_trades_reached")
         if realized_pnl_today <= -daily_loss_limit_amount:
@@ -125,6 +129,7 @@ class ExecutionService:
             daily_loss_limit_amount=daily_loss_limit_amount,
             maximum_open_trades=runtime["maximum_open_trades"],
             open_positions=open_positions,
+            unsupported_open_positions=unsupported_open_positions,
             realized_pnl_today=realized_pnl_today,
             executable=len(reasons) == 0,
             reasons=reasons,
@@ -384,6 +389,7 @@ class ExecutionService:
         note: str | None = None,
     ) -> ExecutionResult:
         position = self._require_open_position(db, position_id)
+        self._assert_demo_position(position)
         signal = self._signal_for_position(db, position)
         result = self._apply_exit(
             db=db,
@@ -422,6 +428,7 @@ class ExecutionService:
         note: str | None = None,
     ) -> PositionManagementResult:
         position = self._require_open_position(db, position_id)
+        self._assert_demo_position(position)
         if quantity >= position.quantity:
             raise ExecutionConflictError("partial_close_quantity_must_be_less_than_position")
         signal = self._signal_for_position(db, position)
@@ -445,6 +452,7 @@ class ExecutionService:
         note: str | None = None,
     ) -> PositionManagementResult:
         position = self._require_open_position(db, position_id)
+        self._assert_demo_position(position)
         current_stop = self._stop_loss_price(position)
         if current_stop is not None and new_stop_price <= current_stop:
             raise ExecutionConflictError("new_stop_must_improve_existing_stop")
@@ -482,6 +490,8 @@ class ExecutionService:
         rows = self.list_positions(db, status=PositionStatus.OPEN, limit=500)
         actions: list[PositionManagementResult] = []
         for position in rows:
+            if not self._is_demo_position(position):
+                continue
             price = prices.get(position.symbol)
             if price is None:
                 continue
@@ -749,7 +759,11 @@ class ExecutionService:
         entry_signal_id = (position.metadata_json or {}).get("signal_id")
         if entry_signal_id is None:
             return None
-        return db.scalar(select(Signal).where(Signal.id == uuid.UUID(entry_signal_id)))
+        try:
+            parsed_signal_id = uuid.UUID(str(entry_signal_id))
+        except (TypeError, ValueError):
+            return None
+        return db.scalar(select(Signal).where(Signal.id == parsed_signal_id))
 
     def _require_open_position(self, db: Session, position_id: uuid.UUID) -> Position:
         position = db.scalar(select(Position).where(Position.id == position_id))
@@ -824,6 +838,13 @@ class ExecutionService:
             list(db.scalars(select(Position).where(Position.status == PositionStatus.OPEN)))
         )
 
+    def _count_unsupported_open_positions(self, db: Session) -> int:
+        return sum(
+            1
+            for row in db.scalars(select(Position).where(Position.status == PositionStatus.OPEN))
+            if not self._is_demo_position(row)
+        )
+
     def _realized_pnl_today(self, db: Session) -> Decimal:
         start_of_day = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
         rows = list(
@@ -880,6 +901,15 @@ class ExecutionService:
 
     def _quantize(self, value: Decimal) -> Decimal:
         return value.quantize(DECIMAL_EIGHT_PLACES, rounding=ROUND_DOWN)
+
+    def _is_demo_position(self, position: Position) -> bool:
+        metadata = position.metadata_json or {}
+        mode = metadata.get("mode") or metadata.get("execution_mode") or "demo"
+        return str(mode).lower() == "demo"
+
+    def _assert_demo_position(self, position: Position) -> None:
+        if not self._is_demo_position(position):
+            raise ExecutionConflictError("position_mode_not_supported")
 
     def _enum_string(self, value: object) -> str:
         if isinstance(value, str):
