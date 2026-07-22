@@ -223,7 +223,7 @@ Render web service:
 
 ```bash
 pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port $PORT
+cd backend && alembic upgrade head && cd .. && uvicorn app.main:app --host 0.0.0.0 --port $PORT
 ```
 
 The root `requirements.txt` installs the backend package from `./backend` so Render services configured at the repository root can resolve `app.main`.
