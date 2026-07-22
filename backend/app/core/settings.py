@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     binance_demo_api_secret: SecretStr | None = None
     execution_enabled: bool = False
     demo_trading_mode: bool = True
+    demo_account_balance: float = Field(default=1000.0, gt=0, le=1000000000)
     scanner_interval_seconds: int = Field(default=30, ge=5, le=3600)
     risk_per_trade: float = Field(default=0.01, gt=0, le=0.05)
     maximum_open_trades: int = Field(default=3, ge=0, le=50)
@@ -197,6 +198,7 @@ class Settings(BaseSettings):
             "allowed_origins": self.allowed_origins,
             "execution_enabled": self.effective_execution_enabled,
             "demo_trading_mode": self.demo_trading_mode,
+            "demo_account_balance": self.demo_account_balance,
             "scanner_interval_seconds": self.scanner_interval_seconds,
             "risk_per_trade": self.risk_per_trade,
             "maximum_open_trades": self.maximum_open_trades,
