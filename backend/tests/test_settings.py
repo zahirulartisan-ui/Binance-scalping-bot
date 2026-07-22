@@ -38,3 +38,23 @@ def test_secret_values_are_redacted() -> None:
     assert dumped["binance_demo_api_secret"] == "********"
     assert "demo-key" not in str(dumped)
     assert "demo-secret" not in str(dumped)
+
+
+def test_settings_accepts_comma_separated_and_json_list_env_values() -> None:
+    comma_settings = Settings(
+        app_env=AppEnvironment.TEST,
+        database_url="sqlite+pysqlite:///:memory:",
+        allowed_origins="https://a.example,https://b.example",
+        market_data_symbols="BTCUSDT,ethusdt",
+    )
+    json_settings = Settings(
+        app_env=AppEnvironment.TEST,
+        database_url="sqlite+pysqlite:///:memory:",
+        allowed_origins='["https://a.example","https://b.example"]',
+        market_data_symbols='["BTCUSDT","ethusdt"]',
+    )
+
+    assert comma_settings.allowed_origins == ["https://a.example", "https://b.example"]
+    assert comma_settings.market_data_symbols == ["BTCUSDT", "ETHUSDT"]
+    assert json_settings.allowed_origins == ["https://a.example", "https://b.example"]
+    assert json_settings.market_data_symbols == ["BTCUSDT", "ETHUSDT"]
