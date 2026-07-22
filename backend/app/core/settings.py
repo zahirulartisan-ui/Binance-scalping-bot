@@ -138,6 +138,10 @@ class Settings(BaseSettings):
     @field_validator("database_url", mode="after")
     @classmethod
     def validate_database_url(cls, value: str) -> str:
+        if value.startswith("postgres://"):
+            value = value.replace("postgres://", "postgresql+psycopg://", 1)
+        elif value.startswith("postgresql://") and "+psycopg" not in value:
+            value = value.replace("postgresql://", "postgresql+psycopg://", 1)
         if "://" in value and ("username:password" in value or "changeme" in value.lower()):
             raise ValueError("DATABASE_URL must not contain placeholder credentials")
         return value
