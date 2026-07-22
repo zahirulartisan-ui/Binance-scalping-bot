@@ -76,8 +76,8 @@ export const TradeJournalPage: React.FC = () => {
 
   // Performance metrics calculation if we have trades
   const wins = trades.filter((t: any) => t.pnl > 0 || t.result === "WIN");
-  const winRate = trades.length > 0 ? (wins.length / trades.length) * 100 : 0;
-  const netPnL = trades.reduce((acc: number, t: any) => acc + (t.pnl || 0), 0);
+  const winRate = journalData?.summary?.win_rate ?? (trades.length > 0 ? (wins.length / trades.length) * 100 : 0);
+  const netPnL = journalData?.summary?.net_pnl ?? trades.reduce((acc: number, t: any) => acc + (t.pnl || 0), 0);
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto animate-in fade-in" id="trade-journal-page">
@@ -179,7 +179,7 @@ export const TradeJournalPage: React.FC = () => {
                 Total Trades
               </div>
               <div className="text-xl font-bold font-mono text-slate-100">
-                {trades.length}
+                {journalData?.summary?.total_trades ?? trades.length}
               </div>
             </div>
             <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-xl space-y-1">
@@ -196,7 +196,7 @@ export const TradeJournalPage: React.FC = () => {
               </div>
               <div className="text-xl font-bold font-mono text-amber-400 flex items-center gap-1.5">
                 <Award className="w-5 h-5 text-amber-500 inline" />
-                {winRate.toFixed(1)}%
+                {Number(winRate).toFixed(1)}%
               </div>
             </div>
           </div>
@@ -302,7 +302,7 @@ export const TradeJournalPage: React.FC = () => {
                           </span>
                         </td>
                         <td className={`py-3 px-4 text-right font-bold ${isWin ? "text-emerald-400" : "text-rose-400"}`}>
-                          {isWin ? "+" : ""}${trade.pnl?.toFixed(2)}
+                          {isWin ? "+" : ""}${Number(trade.pnl || 0).toFixed(2)}
                         </td>
                         <td className="py-3 px-4 text-right text-slate-500">
                           <ChevronRight className="w-4 h-4 ml-auto" />
@@ -395,7 +395,39 @@ export const TradeJournalPage: React.FC = () => {
                   <span className="text-slate-500">Closed At:</span>
                   <span className="text-slate-400">{selectedTrade.closed_at ? new Date(selectedTrade.closed_at).toLocaleString() : "N/A"}</span>
                 </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Duration:</span>
+                  <span className="text-slate-300">{selectedTrade.duration_minutes != null ? `${selectedTrade.duration_minutes} min` : "N/A"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Exit Reason:</span>
+                  <span className="text-slate-300">{selectedTrade.exit_reason || "N/A"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Signal Grade:</span>
+                  <span className="text-slate-300">{selectedTrade.signal_grade || "N/A"}</span>
+                </div>
               </div>
+            </div>
+
+            <div className="bg-slate-950 border border-slate-800/80 rounded-xl p-4 space-y-3.5">
+              <h4 className="font-bold text-slate-300 border-b border-slate-800 pb-2">JOURNAL TIMELINE</h4>
+              {selectedTrade.journal_entries?.length ? (
+                <div className="space-y-3">
+                  {selectedTrade.journal_entries.map((entry: any) => (
+                    <div key={entry.entry_id} className="border border-slate-800 rounded-lg p-3 bg-slate-900/60">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-[10px] uppercase tracking-wider text-amber-400 font-bold">{entry.entry_type}</div>
+                        <div className="text-[10px] text-slate-500">{new Date(entry.entry_at).toLocaleString()}</div>
+                      </div>
+                      <div className="mt-1 text-xs font-bold text-slate-100">{entry.title}</div>
+                      <div className="mt-1 text-[11px] text-slate-400 leading-relaxed">{entry.body}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-[11px] text-slate-500">No journal notes recorded for this trade.</div>
+              )}
             </div>
           </div>
         </div>

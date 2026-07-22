@@ -49,6 +49,9 @@ export const ActiveTradesPage: React.FC = () => {
     (errorTrades as any)?.message?.toLowerCase().includes("not found");
 
   const isOffline = !isLoadingHealth && !health;
+  const positions = activeTrades?.positions || [];
+  const orders = activeTrades?.orders || [];
+  const summary = activeTrades?.summary;
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto" id="active-trades-page">
@@ -122,7 +125,7 @@ export const ActiveTradesPage: React.FC = () => {
             isRetrying={isFetchingTrades}
           />
         </div>
-      ) : !activeTrades || activeTrades.length === 0 ? (
+      ) : !activeTrades || (positions.length === 0 && orders.length === 0) ? (
         <div className="space-y-6" id="trades-empty-state">
           {/* Execution Status Banner */}
           <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 font-mono text-xs">
@@ -157,12 +160,29 @@ export const ActiveTradesPage: React.FC = () => {
       ) : (
         /* Real data presentation (if supported and contains data) */
         <div className="space-y-8" id="trades-real-data">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-xl space-y-1">
+              <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Open Positions</div>
+              <div className="text-xl font-bold font-mono text-slate-100">{summary?.total_positions || 0}</div>
+            </div>
+            <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-xl space-y-1">
+              <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Pending Orders</div>
+              <div className="text-xl font-bold font-mono text-slate-100">{summary?.total_orders || 0}</div>
+            </div>
+            <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-xl space-y-1">
+              <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Unrealized PnL</div>
+              <div className={`text-xl font-bold font-mono ${(summary?.total_unrealized_pnl || 0) >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                {(summary?.total_unrealized_pnl || 0) >= 0 ? "+" : ""}${(summary?.total_unrealized_pnl || 0).toFixed(2)}
+              </div>
+            </div>
+          </div>
+
           {/* Open Positions Card */}
           <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="text-xs font-mono font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-emerald-400" />
-                Open Demo Positions ({activeTrades.positions?.length || 0})
+                Open Positions ({positions.length || 0})
               </div>
             </div>
 
@@ -181,7 +201,7 @@ export const ActiveTradesPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
-                  {activeTrades.positions?.map((pos: any, idx: number) => {
+                  {positions.map((pos: any, idx: number) => {
                     const isLong = pos.direction === "LONG" || pos.direction === "BUY";
                     const isProfit = pos.pnl >= 0;
                     return (
@@ -204,7 +224,7 @@ export const ActiveTradesPage: React.FC = () => {
                         <td className="py-3 px-4 text-rose-400">${pos.stop_loss?.toLocaleString() || pos.sl?.toLocaleString()}</td>
                         <td className="py-3 px-4 text-emerald-400">${pos.take_profit?.toLocaleString() || pos.tp?.toLocaleString()}</td>
                         <td className={`py-3 px-4 text-right font-bold ${isProfit ? "text-emerald-400" : "text-rose-400"}`}>
-                          {isProfit ? "+" : ""}${pos.pnl?.toFixed(2)}
+                          {isProfit ? "+" : ""}${Number(pos.pnl || 0).toFixed(2)}
                         </td>
                       </tr>
                     );
@@ -215,10 +235,10 @@ export const ActiveTradesPage: React.FC = () => {
           </div>
 
           {/* Pending Demo Orders */}
-          {activeTrades.orders && activeTrades.orders.length > 0 && (
+          {orders.length > 0 && (
             <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
               <div className="text-xs font-mono font-bold text-slate-200 uppercase tracking-wider border-b border-slate-800 pb-3">
-                Pending Demo Orders ({activeTrades.orders.length})
+                Pending Orders ({orders.length})
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse font-mono text-xs">
@@ -229,11 +249,13 @@ export const ActiveTradesPage: React.FC = () => {
                       <th className="py-3 px-4 font-semibold">Direction</th>
                       <th className="py-3 px-4 font-semibold">Price</th>
                       <th className="py-3 px-4 font-semibold">Qty</th>
+                      <th className="py-3 px-4 font-semibold">Filled</th>
+                      <th className="py-3 px-4 font-semibold">Mode</th>
                       <th className="py-3 px-4 font-semibold">Created At</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
-                    {activeTrades.orders.map((order: any, idx: number) => {
+                    {orders.map((order: any, idx: number) => {
                       const isLong = order.direction === "LONG" || order.direction === "BUY";
                       return (
                         <tr key={order.id || idx} className="hover:bg-slate-900/40 text-slate-200 transition">
@@ -250,6 +272,8 @@ export const ActiveTradesPage: React.FC = () => {
                           </td>
                           <td className="py-3 px-4">${order.price?.toLocaleString()}</td>
                           <td className="py-3 px-4">{order.quantity || order.qty}</td>
+                          <td className="py-3 px-4">{order.filled_quantity}</td>
+                          <td className="py-3 px-4 text-slate-400 uppercase">{order.mode}</td>
                           <td className="py-3 px-4 text-slate-400">{new Date(order.created_at).toLocaleString()}</td>
                         </tr>
                       );

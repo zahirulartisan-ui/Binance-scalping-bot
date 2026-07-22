@@ -85,8 +85,21 @@ export const DashboardPage: React.FC = () => {
     retry: 1,
   });
 
-  const isError = isErrorHealth || isErrorMarketStatus || isErrorRegime || isErrorSetups;
-  const anyError = errorHealth || errorMarketStatus || errorRegime || errorSetups;
+  const {
+    data: telemetry,
+    isLoading: isLoadingTelemetry,
+    isError: isErrorTelemetry,
+    error: errorTelemetry,
+    refetch: refetchTelemetry,
+  } = useQuery({
+    queryKey: ["tradeTelemetry"],
+    queryFn: () => apiClient.getTradeTelemetry(),
+    refetchInterval: isTabVisible ? 10000 : false,
+    retry: 1,
+  });
+
+  const isError = isErrorHealth || isErrorMarketStatus || isErrorRegime || isErrorSetups || isErrorTelemetry;
+  const anyError = errorHealth || errorMarketStatus || errorRegime || errorSetups || errorTelemetry;
   const isRetrying = isFetchingHealth;
 
   if (isError) {
@@ -112,6 +125,7 @@ export const DashboardPage: React.FC = () => {
               refetchMarketStatus();
               refetchRegime();
               refetchSetups();
+              refetchTelemetry();
             }}
             isRetrying={isRetrying}
           />
@@ -133,6 +147,28 @@ export const DashboardPage: React.FC = () => {
           </p>
         </div>
       </div>
+
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-xl">
+          <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Open Positions</div>
+          <div className="mt-1 text-2xl font-bold font-mono text-slate-100">
+            {telemetry?.summary?.total_positions ?? 0}
+          </div>
+        </div>
+        <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-xl">
+          <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Pending Orders</div>
+          <div className="mt-1 text-2xl font-bold font-mono text-slate-100">
+            {telemetry?.summary?.total_orders ?? 0}
+          </div>
+        </div>
+        <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-xl">
+          <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Unrealized PnL</div>
+          <div className={`mt-1 text-2xl font-bold font-mono ${(telemetry?.summary?.total_unrealized_pnl ?? 0) >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+            {(telemetry?.summary?.total_unrealized_pnl ?? 0) >= 0 ? "+" : ""}
+            ${(telemetry?.summary?.total_unrealized_pnl ?? 0).toFixed(2)}
+          </div>
+        </div>
+      </section>
 
       {/* 1. Health Summary Cards Grid */}
       <section className="space-y-3">
@@ -343,6 +379,65 @@ export const DashboardPage: React.FC = () => {
             </div>
           )}
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <section className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <h2 className="text-sm font-bold font-mono text-slate-100 flex items-center gap-2">
+              <Activity className="w-4 h-4 text-rose-400" /> LIVE SYSTEM EVENTS
+            </h2>
+          </div>
+          {isLoadingTelemetry ? (
+            <div className="h-28 flex items-center justify-center">
+              <div className="w-6 h-6 border-2 border-slate-700 border-t-rose-400 rounded-full animate-spin" />
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {(telemetry?.recent_system_events || []).slice(0, 6).map((event) => (
+                <div key={event.event_id} className="border border-slate-800 rounded-lg p-3 bg-slate-950/50">
+                  <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-wider">
+                    <span className="font-bold text-amber-400">{event.source}</span>
+                    <span className="text-slate-500">{new Date(event.event_at).toLocaleTimeString()}</span>
+                  </div>
+                  <div className="mt-1 text-xs text-slate-100">{event.message}</div>
+                </div>
+              ))}
+              {!telemetry?.recent_system_events?.length && (
+                <div className="text-[11px] text-slate-500">No recent system events available.</div>
+              )}
+            </div>
+          )}
+        </section>
+
+        <section className="bg-slate-900/80 border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <h2 className="text-sm font-bold font-mono text-slate-100 flex items-center gap-2">
+              <Clock className="w-4 h-4 text-sky-400" /> RECENT TRADE NOTES
+            </h2>
+          </div>
+          {isLoadingTelemetry ? (
+            <div className="h-28 flex items-center justify-center">
+              <div className="w-6 h-6 border-2 border-slate-700 border-t-sky-400 rounded-full animate-spin" />
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {(telemetry?.recent_trade_notes || []).slice(0, 6).map((entry) => (
+                <div key={entry.entry_id} className="border border-slate-800 rounded-lg p-3 bg-slate-950/50">
+                  <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-wider">
+                    <span className="font-bold text-emerald-400">{entry.entry_type}</span>
+                    <span className="text-slate-500">{new Date(entry.entry_at).toLocaleTimeString()}</span>
+                  </div>
+                  <div className="mt-1 text-xs font-semibold text-slate-100">{entry.title}</div>
+                  <div className="mt-1 text-[11px] text-slate-400">{entry.body}</div>
+                </div>
+              ))}
+              {!telemetry?.recent_trade_notes?.length && (
+                <div className="text-[11px] text-slate-500">No recent trade notes available.</div>
+              )}
+            </div>
+          )}
+        </section>
       </div>
 
       {/* 3. Live Strategy Setups Feed (Latest 10 Rows) */}

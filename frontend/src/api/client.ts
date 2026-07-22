@@ -7,10 +7,13 @@ import {
   MarketRegimeResponse,
   MarketSnapshot,
   MarketSymbol,
+  ActiveTradesResponse,
   RuntimeSettings,
   RuntimeSettingsPatch,
   StrategyInfo,
   StrategySetup,
+  TelemetryFeedResponse,
+  TradeJournalResponse,
   TrendPullbackEvaluation,
 } from "./types";
 
@@ -176,16 +179,23 @@ export const apiClient = {
   },
 
   // GET /api/v1/trades/active
-  getActiveTrades: async (): Promise<any> => {
+  getActiveTrades: async (): Promise<ActiveTradesResponse> => {
     const baseUrl = getApiBaseUrl();
     const res = await fetch(`${baseUrl}/api/v1/trades/active`, { method: "GET" });
-    return await handleResponse<any>(res);
+    return await handleResponse<ActiveTradesResponse>(res);
   },
 
   // GET /api/v1/trades/journal
-  getTradeJournal: async (): Promise<any> => {
+  getTradeJournal: async (): Promise<TradeJournalResponse> => {
     const baseUrl = getApiBaseUrl();
     const res = await fetch(`${baseUrl}/api/v1/trades/journal`, { method: "GET" });
-    return await handleResponse<any>(res);
+    return await handleResponse<TradeJournalResponse>(res);
+  },
+
+  // GET /api/v1/trades/telemetry
+  getTradeTelemetry: async (): Promise<TelemetryFeedResponse> => {
+    const baseUrl = getApiBaseUrl();
+    const res = await fetch(`${baseUrl}/api/v1/trades/telemetry`, { method: "GET" });
+    return await handleResponse<TelemetryFeedResponse>(res);
   },
 };

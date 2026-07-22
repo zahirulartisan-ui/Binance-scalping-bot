@@ -233,11 +233,17 @@ export interface RuntimeSettings {
   allowed_origins: string[];
   execution_enabled: boolean;
   demo_trading_mode: boolean;
+  demo_account_balance?: number;
   scanner_interval_seconds: number;
+  signal_execution_automation_enabled?: boolean;
+  signal_execution_batch_size?: number;
   risk_per_trade: number; // e.g. 0.01 (1%)
   maximum_open_trades: number;
   daily_loss_limit: number; // e.g. 0.05 (5%)
   emergency_stop: boolean;
+  position_monitoring_enabled?: boolean;
+  position_monitoring_interval_seconds?: number;
+  position_monitoring_price_max_age_seconds?: number;
 }
 
 // Runtime Settings Patch Request
@@ -246,11 +252,123 @@ export interface RuntimeSettingsPatch {
   allowed_origins?: string[];
   execution_enabled?: boolean;
   demo_trading_mode?: boolean;
+  demo_account_balance?: number;
   scanner_interval_seconds?: number;
+  signal_execution_automation_enabled?: boolean;
+  signal_execution_batch_size?: number;
   risk_per_trade?: number;
   maximum_open_trades?: number;
   daily_loss_limit?: number;
   emergency_stop?: boolean;
+  position_monitoring_enabled?: boolean;
+  position_monitoring_interval_seconds?: number;
+  position_monitoring_price_max_age_seconds?: number;
+}
+
+export interface TradesSummary {
+  total_positions: number;
+  total_orders: number;
+  total_open_quantity: number;
+  total_unrealized_pnl: number;
+  total_realized_pnl: number;
+  last_synced_at: string | null;
+}
+
+export interface ActiveTradePosition {
+  id: string;
+  symbol: string;
+  direction: string;
+  quantity: number;
+  entry_price: number;
+  current_price: number;
+  stop_loss: number | null;
+  take_profit: number | null;
+  pnl: number;
+  opened_at: string;
+  status: string;
+}
+
+export interface ActiveTradeOrder {
+  id: string;
+  symbol: string;
+  direction: string;
+  type: string;
+  price: number | null;
+  quantity: number;
+  filled_quantity: number;
+  fee: number;
+  created_at: string;
+  status: string;
+  mode: string;
+}
+
+export interface ActiveTradesResponse {
+  summary: TradesSummary;
+  positions: ActiveTradePosition[];
+  orders: ActiveTradeOrder[];
+}
+
+export interface TradeJournalEntry {
+  entry_id: string;
+  entry_type: string;
+  title: string;
+  body: string;
+  entry_at: string;
+  metadata_json: Record<string, any>;
+}
+
+export interface TradeJournalItem {
+  id: string;
+  symbol: string | null;
+  strategy: string;
+  direction: string;
+  entry_price: number;
+  exit_price: number;
+  stop_loss: number | null;
+  take_profit: number | null;
+  risk_reward: string;
+  pnl: number;
+  result: string;
+  opened_at: string | null;
+  closed_at: string | null;
+  duration_minutes: number | null;
+  signal_grade: string | null;
+  setup_id: string | null;
+  exit_reason: string | null;
+  mode: string;
+  journal_entries: TradeJournalEntry[];
+}
+
+export interface TradeJournalSummary {
+  total_trades: number;
+  wins: number;
+  losses: number;
+  win_rate: number;
+  net_pnl: number;
+  average_pnl: number;
+}
+
+export interface TradeJournalResponse {
+  summary: TradeJournalSummary;
+  trades: TradeJournalItem[];
+}
+
+export interface TelemetryEvent {
+  event_id: string;
+  level: string;
+  source: string;
+  message: string;
+  event_at: string;
+  metadata_json: Record<string, any>;
+}
+
+export interface TelemetryFeedResponse {
+  summary: TradesSummary;
+  recent_system_events: TelemetryEvent[];
+  recent_trade_notes: TradeJournalEntry[];
+  recent_closed_trades: TradeJournalItem[];
+  active_positions: ActiveTradePosition[];
+  pending_orders: ActiveTradeOrder[];
 }
 
 // FastAPI Standard Error
