@@ -77,6 +77,21 @@ class ExecutionResult:
     reused: bool
 
 
+@dataclass(frozen=True)
+class PositionManagementResult:
+    action: str
+    position: Position
+    order: Order | None
+    events: list[PositionEvent]
+    details: dict[str, str | int | list[str] | None]
+
+
+@dataclass(frozen=True)
+class MonitorSweepResult:
+    checked_count: int
+    actions: list[PositionManagementResult]
+
+
 class ExecutionService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -128,6 +143,15 @@ class ExecutionService:
 
     def get_position(self, db: Session, position_id: uuid.UUID) -> Position | None:
         return db.scalar(select(Position).where(Position.id == position_id))
+
+    def list_position_events(self, db: Session, position_id: uuid.UUID) -> list[PositionEvent]:
+        return list(
+            db.scalars(
+                select(PositionEvent)
+                .where(PositionEvent.position_id == position_id)
+                .order_by(PositionEvent.event_at.asc(), PositionEvent.created_at.asc())
+            )
+        )
 
     def execute_signal(
         self,
@@ -247,9 +271,14 @@ class ExecutionService:
                 "signal_id": str(signal.id),
                 "mode": "demo",
                 "stop_loss_price": str(stop_loss),
+                "initial_stop_loss_price": str(stop_loss),
                 "take_profit_price": str(signal.take_profit_price)
                 if signal.take_profit_price is not None
                 else None,
+                "initial_quantity": str(quantity),
+                "partial_take_profit_done": False,
+                "break_even_moved": False,
+                "trailing_stop_active": False,
                 "note": note,
             },
         )
@@ -354,96 +383,19 @@ class ExecutionService:
         exit_price: Decimal,
         note: str | None = None,
     ) -> ExecutionResult:
-        position = db.scalar(select(Position).where(Position.id == position_id))
-        if position is None:
-            raise PositionNotFoundError("position not found")
-        if self._enum_string(position.status) != PositionStatus.OPEN.value:
-            raise ExecutionConflictError("position_not_open")
-
-        entry_signal_id = (
-            position.metadata_json.get("signal_id") if position.metadata_json else None
-        )
-        signal = None
-        if entry_signal_id is not None:
-            signal = db.scalar(select(Signal).where(Signal.id == uuid.UUID(entry_signal_id)))
-
-        now = datetime.now(UTC)
-        realized_pnl = self._quantize(
-            (exit_price - position.average_entry_price) * position.quantity
-        )
-        position.status = PositionStatus.CLOSED
-        position.realized_pnl = realized_pnl
-        position.unrealized_pnl = DECIMAL_ZERO
-        position.closed_at = now
-        position.metadata_json = {
-            **(position.metadata_json or {}),
-            "close_price": str(exit_price),
-            "close_note": note,
-        }
-        db.flush()
-
-        order = Order(
-            signal_id=signal.id if signal is not None else None,
-            position_id=position.id,
-            client_order_id=f"demo-exit-{position.id}",
-            exchange_order_id=f"demo-exit-{position.id}",
-            symbol=position.symbol,
-            side=OrderSide.SELL,
-            order_type=OrderType.MARKET,
-            status=OrderStatus.FILLED,
-            price=exit_price,
+        position = self._require_open_position(db, position_id)
+        signal = self._signal_for_position(db, position)
+        result = self._apply_exit(
+            db=db,
+            position=position,
+            signal=signal,
+            exit_price=exit_price,
             quantity=position.quantity,
-            filled_quantity=position.quantity,
-            fee=DECIMAL_ZERO,
-            submitted_at=now,
-            metadata_json={"mode": "demo", "note": note},
-        )
-        db.add(order)
-        db.flush()
-
-        fill = Fill(
-            order_id=order.id,
-            exchange_trade_id=f"demo-fill-exit-{order.id}",
-            price=exit_price,
-            quantity=position.quantity,
-            fee=DECIMAL_ZERO,
-            fee_asset="USDT",
-            filled_at=now,
-            metadata_json={"mode": "demo"},
-        )
-        event = PositionEvent(
-            position_id=position.id,
+            note=note,
+            action="manual_close",
             event_type=PositionEventType.CLOSED,
-            quantity_delta=-position.quantity,
-            price=exit_price,
-            realized_pnl_delta=realized_pnl,
-            event_at=now,
-            metadata_json={"mode": "demo"},
+            reason="manual_close",
         )
-        journal = TradeJournalEntry(
-            position_id=position.id,
-            symbol=position.symbol,
-            entry_type=JournalEntryType.REVIEW,
-            title=f"Demo position closed for {position.symbol}",
-            body=note or "Execution foundation closed the demo position.",
-            entry_at=now,
-            metadata_json={"position_id": str(position.id)},
-        )
-        system_event = SystemEvent(
-            level=SystemEventLevel.INFO,
-            source="execution_service",
-            message=f"Demo execution closed position for {position.symbol}",
-            idempotency_key=f"system-exit-{position.id}",
-            event_at=now,
-            metadata_json={
-                "position_id": str(position.id),
-                "order_id": str(order.id),
-                "realized_pnl": str(realized_pnl),
-            },
-        )
-        db.add_all([fill, event, journal, system_event])
-        db.flush()
-
         risk_decision = self._latest_risk_decision(db, signal.id if signal is not None else None)
         if risk_decision is None:
             risk_decision = self._record_risk_decision(
@@ -456,10 +408,391 @@ class ExecutionService:
         return ExecutionResult(
             signal=signal or self._synthetic_signal(position),
             risk_decision=risk_decision,
-            order=order,
-            position=position,
+            order=result.order,
+            position=result.position,
             reused=False,
         )
+
+    def partial_close_position(
+        self,
+        db: Session,
+        position_id: uuid.UUID,
+        exit_price: Decimal,
+        quantity: Decimal,
+        note: str | None = None,
+    ) -> PositionManagementResult:
+        position = self._require_open_position(db, position_id)
+        if quantity >= position.quantity:
+            raise ExecutionConflictError("partial_close_quantity_must_be_less_than_position")
+        signal = self._signal_for_position(db, position)
+        return self._apply_exit(
+            db=db,
+            position=position,
+            signal=signal,
+            exit_price=exit_price,
+            quantity=quantity,
+            note=note,
+            action="partial_close",
+            event_type=PositionEventType.REDUCED,
+            reason="manual_partial_close",
+        )
+
+    def move_stop(
+        self,
+        db: Session,
+        position_id: uuid.UUID,
+        new_stop_price: Decimal,
+        note: str | None = None,
+    ) -> PositionManagementResult:
+        position = self._require_open_position(db, position_id)
+        current_stop = self._stop_loss_price(position)
+        if current_stop is not None and new_stop_price <= current_stop:
+            raise ExecutionConflictError("new_stop_must_improve_existing_stop")
+
+        position.metadata_json = {
+            **(position.metadata_json or {}),
+            "stop_loss_price": str(new_stop_price),
+            "stop_update_note": note,
+        }
+        event = PositionEvent(
+            position_id=position.id,
+            event_type=PositionEventType.STOP_UPDATED,
+            quantity_delta=DECIMAL_ZERO,
+            price=new_stop_price,
+            realized_pnl_delta=DECIMAL_ZERO,
+            event_at=datetime.now(UTC),
+            metadata_json={"reason": "manual_stop_update", "note": note},
+        )
+        db.add(event)
+        db.flush()
+        return PositionManagementResult(
+            action="move_stop",
+            position=position,
+            order=None,
+            events=[event],
+            details={"new_stop_price": str(new_stop_price), "note": note},
+        )
+
+    def run_monitor(
+        self,
+        db: Session,
+        prices: dict[str, Decimal],
+        note: str | None = None,
+    ) -> MonitorSweepResult:
+        rows = self.list_positions(db, status=PositionStatus.OPEN, limit=500)
+        actions: list[PositionManagementResult] = []
+        for position in rows:
+            price = prices.get(position.symbol)
+            if price is None:
+                continue
+            actions.extend(self._monitor_position(db, position, price, note))
+        db.flush()
+        return MonitorSweepResult(checked_count=len(rows), actions=actions)
+
+    def _monitor_position(
+        self,
+        db: Session,
+        position: Position,
+        current_price: Decimal,
+        note: str | None,
+    ) -> list[PositionManagementResult]:
+        actions: list[PositionManagementResult] = []
+        signal = self._signal_for_position(db, position)
+        position.unrealized_pnl = self._quantize(
+            (current_price - position.average_entry_price) * position.quantity
+        )
+        metadata = position.metadata_json or {}
+        current_stop = self._stop_loss_price(position)
+        take_profit = self._take_profit_price(position)
+        if current_stop is not None and current_price <= current_stop:
+            actions.append(
+                self._apply_exit(
+                    db=db,
+                    position=position,
+                    signal=signal,
+                    exit_price=current_stop,
+                    quantity=position.quantity,
+                    note=note,
+                    action="stop_loss_close",
+                    event_type=PositionEventType.CLOSED,
+                    reason="stop_loss_hit",
+                )
+            )
+            return actions
+
+        current_rr = self._reward_to_risk(position, current_price)
+        partial_done = bool(metadata.get("partial_take_profit_done"))
+        if (
+            not partial_done
+            and take_profit is not None
+            and current_price >= take_profit
+            and position.quantity > DECIMAL_ZERO
+        ):
+            partial_quantity = self._partial_take_profit_quantity(position)
+            if partial_quantity > DECIMAL_ZERO and partial_quantity < position.quantity:
+                actions.append(
+                    self._apply_exit(
+                        db=db,
+                        position=position,
+                        signal=signal,
+                        exit_price=current_price,
+                        quantity=partial_quantity,
+                        note=note,
+                        action="partial_take_profit",
+                        event_type=PositionEventType.REDUCED,
+                        reason="partial_take_profit_hit",
+                    )
+                )
+                position.metadata_json = {
+                    **(position.metadata_json or {}),
+                    "partial_take_profit_done": True,
+                }
+
+        if self._enum_string(position.status) != PositionStatus.OPEN.value:
+            return actions
+
+        if (
+            current_rr >= Decimal(str(self.settings.position_break_even_trigger_rr))
+            and not bool((position.metadata_json or {}).get("break_even_moved"))
+        ):
+            event = self._update_stop(
+                db=db,
+                position=position,
+                new_stop_price=position.average_entry_price,
+                reason="auto_break_even",
+                note=note,
+            )
+            position.metadata_json = {
+                **(position.metadata_json or {}),
+                "break_even_moved": True,
+            }
+            actions.append(
+                PositionManagementResult(
+                    action="move_stop_to_breakeven",
+                    position=position,
+                    order=None,
+                    events=[event],
+                    details={"reward_to_risk": str(current_rr)},
+                )
+            )
+
+        if self._enum_string(position.status) != PositionStatus.OPEN.value:
+            return actions
+
+        trailing_trigger = Decimal(str(self.settings.position_trailing_stop_trigger_rr))
+        trailing_buffer = Decimal(str(self.settings.position_trailing_stop_buffer_rr))
+        if current_rr >= trailing_trigger:
+            initial_risk = self._initial_risk_per_unit(position)
+            candidate_stop = current_price - (initial_risk * trailing_buffer)
+            current_stop = self._stop_loss_price(position)
+            if current_stop is None or candidate_stop > current_stop:
+                event = self._update_stop(
+                    db=db,
+                    position=position,
+                    new_stop_price=self._quantize(candidate_stop),
+                    reason="auto_trailing_stop",
+                    note=note,
+                )
+                position.metadata_json = {
+                    **(position.metadata_json or {}),
+                    "trailing_stop_active": True,
+                }
+                actions.append(
+                    PositionManagementResult(
+                        action="trail_stop",
+                        position=position,
+                        order=None,
+                        events=[event],
+                        details={"reward_to_risk": str(current_rr)},
+                    )
+                )
+
+        db.flush()
+        return actions
+
+    def _apply_exit(
+        self,
+        db: Session,
+        position: Position,
+        signal: Signal | None,
+        exit_price: Decimal,
+        quantity: Decimal,
+        note: str | None,
+        action: str,
+        event_type: PositionEventType,
+        reason: str,
+    ) -> PositionManagementResult:
+        if quantity <= DECIMAL_ZERO:
+            raise ExecutionConflictError("exit_quantity_must_be_positive")
+        quantity = self._quantize(quantity)
+        if quantity > position.quantity:
+            raise ExecutionConflictError("exit_quantity_exceeds_position")
+
+        now = datetime.now(UTC)
+        realized_pnl = self._quantize((exit_price - position.average_entry_price) * quantity)
+        remaining_quantity = self._quantize(position.quantity - quantity)
+        position.realized_pnl = self._quantize(position.realized_pnl + realized_pnl)
+        position.quantity = remaining_quantity
+        position.unrealized_pnl = DECIMAL_ZERO
+        if remaining_quantity <= DECIMAL_ZERO:
+            position.status = PositionStatus.CLOSED
+            position.closed_at = now
+            position.quantity = DECIMAL_ZERO
+        position.metadata_json = {
+            **(position.metadata_json or {}),
+            "last_exit_reason": reason,
+            "last_exit_price": str(exit_price),
+            "last_exit_quantity": str(quantity),
+            "last_exit_note": note,
+        }
+        db.flush()
+
+        order = Order(
+            signal_id=signal.id if signal is not None else None,
+            position_id=position.id,
+            client_order_id=f"demo-{action}-{position.id}-{uuid.uuid4().hex[:8]}",
+            exchange_order_id=f"demo-{action}-{position.id}",
+            symbol=position.symbol,
+            side=OrderSide.SELL,
+            order_type=OrderType.MARKET,
+            status=OrderStatus.FILLED,
+            price=exit_price,
+            quantity=quantity,
+            filled_quantity=quantity,
+            fee=DECIMAL_ZERO,
+            submitted_at=now,
+            metadata_json={"mode": "demo", "note": note, "reason": reason},
+        )
+        db.add(order)
+        db.flush()
+
+        fill = Fill(
+            order_id=order.id,
+            exchange_trade_id=f"demo-fill-{action}-{order.id}",
+            price=exit_price,
+            quantity=quantity,
+            fee=DECIMAL_ZERO,
+            fee_asset="USDT",
+            filled_at=now,
+            metadata_json={"mode": "demo", "reason": reason},
+        )
+        event = PositionEvent(
+            position_id=position.id,
+            event_type=event_type,
+            quantity_delta=-quantity,
+            price=exit_price,
+            realized_pnl_delta=realized_pnl,
+            event_at=now,
+            metadata_json={"reason": reason, "note": note},
+        )
+        journal = TradeJournalEntry(
+            position_id=position.id,
+            symbol=position.symbol,
+            entry_type=JournalEntryType.REVIEW,
+            title=f"Demo {action.replace('_', ' ')} for {position.symbol}",
+            body=note or f"Execution management processed {action} for {position.symbol}.",
+            entry_at=now,
+            metadata_json={"position_id": str(position.id), "reason": reason},
+        )
+        system_event = SystemEvent(
+            level=SystemEventLevel.INFO,
+            source="execution_service",
+            message=f"Demo {action} processed for {position.symbol}",
+            idempotency_key=f"system-{action}-{position.id}-{uuid.uuid4()}",
+            event_at=now,
+            metadata_json={
+                "position_id": str(position.id),
+                "order_id": str(order.id),
+                "reason": reason,
+            },
+        )
+        db.add_all([fill, event, journal, system_event])
+        db.flush()
+        return PositionManagementResult(
+            action=action,
+            position=position,
+            order=order,
+            events=[event],
+            details={"reason": reason, "note": note},
+        )
+
+    def _update_stop(
+        self,
+        db: Session,
+        position: Position,
+        new_stop_price: Decimal,
+        reason: str,
+        note: str | None,
+    ) -> PositionEvent:
+        current_stop = self._stop_loss_price(position)
+        if current_stop is not None and new_stop_price <= current_stop:
+            raise ExecutionConflictError("new_stop_must_improve_existing_stop")
+        position.metadata_json = {
+            **(position.metadata_json or {}),
+            "stop_loss_price": str(new_stop_price),
+            "last_stop_reason": reason,
+        }
+        event = PositionEvent(
+            position_id=position.id,
+            event_type=PositionEventType.STOP_UPDATED,
+            quantity_delta=DECIMAL_ZERO,
+            price=new_stop_price,
+            realized_pnl_delta=DECIMAL_ZERO,
+            event_at=datetime.now(UTC),
+            metadata_json={"reason": reason, "note": note},
+        )
+        db.add(event)
+        db.flush()
+        return event
+
+    def _signal_for_position(self, db: Session, position: Position) -> Signal | None:
+        entry_signal_id = (position.metadata_json or {}).get("signal_id")
+        if entry_signal_id is None:
+            return None
+        return db.scalar(select(Signal).where(Signal.id == uuid.UUID(entry_signal_id)))
+
+    def _require_open_position(self, db: Session, position_id: uuid.UUID) -> Position:
+        position = db.scalar(select(Position).where(Position.id == position_id))
+        if position is None:
+            raise PositionNotFoundError("position not found")
+        if self._enum_string(position.status) != PositionStatus.OPEN.value:
+            raise ExecutionConflictError("position_not_open")
+        return position
+
+    def _partial_take_profit_quantity(self, position: Position) -> Decimal:
+        initial_quantity = Decimal(
+            str((position.metadata_json or {}).get("initial_quantity") or position.quantity)
+        )
+        partial = self._quantize(
+            initial_quantity * Decimal(str(self.settings.position_partial_take_profit_fraction))
+        )
+        return min(partial, position.quantity)
+
+    def _reward_to_risk(self, position: Position, current_price: Decimal) -> Decimal:
+        initial_risk = self._initial_risk_per_unit(position)
+        if initial_risk <= DECIMAL_ZERO:
+            return DECIMAL_ZERO
+        reward = current_price - position.average_entry_price
+        return self._quantize(reward / initial_risk)
+
+    def _initial_risk_per_unit(self, position: Position) -> Decimal:
+        metadata = position.metadata_json or {}
+        initial_stop = Decimal(
+            str(metadata.get("initial_stop_loss_price") or metadata.get("stop_loss_price") or "0")
+        )
+        return self._quantize(position.average_entry_price - initial_stop)
+
+    def _stop_loss_price(self, position: Position) -> Decimal | None:
+        value = (position.metadata_json or {}).get("stop_loss_price")
+        if value is None:
+            return None
+        return Decimal(str(value))
+
+    def _take_profit_price(self, position: Position) -> Decimal | None:
+        value = (position.metadata_json or {}).get("take_profit_price")
+        if value is None:
+            return None
+        return Decimal(str(value))
 
     def _synthetic_signal(self, position: Position) -> Signal:
         signal = Signal(
@@ -488,9 +821,7 @@ class ExecutionService:
 
     def _count_open_positions(self, db: Session) -> int:
         return len(
-            list(
-                db.scalars(select(Position).where(Position.status == PositionStatus.OPEN))
-            )
+            list(db.scalars(select(Position).where(Position.status == PositionStatus.OPEN)))
         )
 
     def _realized_pnl_today(self, db: Session) -> Decimal:

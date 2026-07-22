@@ -10,12 +10,18 @@ from sqlalchemy.orm import Session
 from app.core.settings import Settings, get_settings
 from app.database.session import get_db
 from app.models.enums import PositionStatus
-from app.models.trading import Order, Position, RiskDecision, Signal
+from app.models.trading import Order, Position, PositionEvent, RiskDecision, Signal
 from app.schemas.execution import (
     ClosePositionRequest,
     ExecuteSignalRequest,
     ExecutionStatusResponse,
+    MonitorRunRequest,
+    MonitorSweepResponse,
+    MoveStopRequest,
     OrderResponse,
+    PartialClosePositionRequest,
+    PositionEventResponse,
+    PositionManagementResponse,
     PositionResponse,
     RiskDecisionResponse,
     SignalExecutionResponse,
@@ -88,6 +94,30 @@ def _position_response(row: Position) -> PositionResponse:
         signal_id=metadata.get("signal_id"),
         created_at=row.created_at,
         metadata_json=metadata,
+    )
+
+
+def _position_event_response(row: PositionEvent) -> PositionEventResponse:
+    return PositionEventResponse(
+        event_id=str(row.id),
+        position_id=str(row.position_id),
+        event_type=_enum_value(row.event_type),
+        quantity_delta=row.quantity_delta,
+        price=row.price,
+        realized_pnl_delta=row.realized_pnl_delta,
+        event_at=row.event_at,
+        created_at=row.created_at,
+        metadata_json=row.metadata_json or {},
+    )
+
+
+def _position_management_response(result: object) -> PositionManagementResponse:
+    return PositionManagementResponse(
+        action=result.action,
+        position=_position_response(result.position),
+        order=_order_response(result.order) if result.order is not None else None,
+        events=[_position_event_response(item) for item in result.events],
+        details=result.details,
     )
 
 
@@ -191,6 +221,24 @@ def read_position(
     return _position_response(row)
 
 
+@router.get("/positions/{position_id}/events", response_model=list[PositionEventResponse])
+def read_position_events(
+    position_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> list[PositionEventResponse]:
+    try:
+        parsed = uuid.UUID(position_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="invalid position id") from exc
+
+    service = ExecutionService(settings)
+    row = service.get_position(db, parsed)
+    if row is None:
+        raise HTTPException(status_code=404, detail="position not found")
+    return [_position_event_response(item) for item in service.list_position_events(db, parsed)]
+
+
 @router.post("/positions/{position_id}/close", response_model=SignalExecutionResponse)
 def close_position(
     position_id: str,
@@ -221,4 +269,75 @@ def close_position(
         result.order,
         result.position,
         result.reused,
+    )
+
+
+@router.post(
+    "/positions/{position_id}/partial-close",
+    response_model=PositionManagementResponse,
+)
+def partial_close_position(
+    position_id: str,
+    payload: PartialClosePositionRequest,
+    db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> PositionManagementResponse:
+    try:
+        parsed = uuid.UUID(position_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="invalid position id") from exc
+
+    try:
+        result = ExecutionService(settings).partial_close_position(
+            db,
+            parsed,
+            exit_price=payload.exit_price,
+            quantity=payload.quantity,
+            note=payload.note,
+        )
+    except PositionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ExecutionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _position_management_response(result)
+
+
+@router.post("/positions/{position_id}/move-stop", response_model=PositionManagementResponse)
+def move_stop(
+    position_id: str,
+    payload: MoveStopRequest,
+    db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> PositionManagementResponse:
+    try:
+        parsed = uuid.UUID(position_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="invalid position id") from exc
+
+    try:
+        result = ExecutionService(settings).move_stop(
+            db,
+            parsed,
+            new_stop_price=payload.new_stop_price,
+            note=payload.note,
+        )
+    except PositionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ExecutionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _position_management_response(result)
+
+
+@router.post("/monitor/run", response_model=MonitorSweepResponse)
+def run_monitor(
+    payload: MonitorRunRequest,
+    db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> MonitorSweepResponse:
+    prices = {item.symbol.upper(): item.price for item in payload.prices}
+    result = ExecutionService(settings).run_monitor(db, prices=prices, note=payload.note)
+    return MonitorSweepResponse(
+        checked_count=result.checked_count,
+        action_count=len(result.actions),
+        actions=[_position_management_response(item) for item in result.actions],
     )

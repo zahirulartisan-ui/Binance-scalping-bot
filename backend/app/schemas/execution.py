@@ -33,6 +33,27 @@ class ClosePositionRequest(BaseModel):
     note: str | None = Field(default=None, max_length=250)
 
 
+class PartialClosePositionRequest(BaseModel):
+    exit_price: Decimal = Field(gt=0)
+    quantity: Decimal = Field(gt=0)
+    note: str | None = Field(default=None, max_length=250)
+
+
+class MoveStopRequest(BaseModel):
+    new_stop_price: Decimal = Field(gt=0)
+    note: str | None = Field(default=None, max_length=250)
+
+
+class MonitorPriceInput(BaseModel):
+    symbol: str
+    price: Decimal = Field(gt=0)
+
+
+class MonitorRunRequest(BaseModel):
+    prices: list[MonitorPriceInput]
+    note: str | None = Field(default=None, max_length=250)
+
+
 class RiskDecisionResponse(BaseModel):
     risk_decision_id: str
     status: str
@@ -79,6 +100,18 @@ class PositionResponse(BaseModel):
     metadata_json: dict[str, Any]
 
 
+class PositionEventResponse(BaseModel):
+    event_id: str
+    position_id: str
+    event_type: str
+    quantity_delta: Decimal
+    price: Decimal | None
+    realized_pnl_delta: Decimal
+    event_at: datetime
+    created_at: datetime
+    metadata_json: dict[str, Any]
+
+
 class SignalExecutionResponse(BaseModel):
     signal_id: str
     reused: bool
@@ -87,3 +120,16 @@ class SignalExecutionResponse(BaseModel):
     order: OrderResponse
     position: PositionResponse
 
+
+class PositionManagementResponse(BaseModel):
+    action: str
+    position: PositionResponse
+    order: OrderResponse | None
+    events: list[PositionEventResponse]
+    details: dict[str, Any]
+
+
+class MonitorSweepResponse(BaseModel):
+    checked_count: int
+    action_count: int
+    actions: list[PositionManagementResponse]

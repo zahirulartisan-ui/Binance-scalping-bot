@@ -113,6 +113,11 @@ class Settings(BaseSettings):
     strategy_signal_grade_a_min: int = Field(default=85, ge=1, le=100)
     strategy_signal_grade_b_min: int = Field(default=70, ge=1, le=100)
     strategy_signal_grade_c_min: int = Field(default=55, ge=1, le=100)
+    position_break_even_trigger_rr: float = Field(default=1.0, ge=0.1, le=20)
+    position_partial_take_profit_rr: float = Field(default=2.0, ge=0.1, le=20)
+    position_partial_take_profit_fraction: float = Field(default=0.5, gt=0, lt=1)
+    position_trailing_stop_trigger_rr: float = Field(default=2.5, ge=0.1, le=50)
+    position_trailing_stop_buffer_rr: float = Field(default=0.75, ge=0.05, le=10)
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
