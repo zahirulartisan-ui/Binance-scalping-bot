@@ -1,13 +1,14 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import Engine, inspect, text
+from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 
 from app import __version__
 from app.core.settings import Settings, get_settings
 from app.database.session import get_db
 from app.schemas.health import HealthResponse, HealthStatus
+from app.services.migration_service import migrations_ready
 
 router = APIRouter()
 
@@ -24,7 +25,7 @@ def health_check(
         bind = db.get_bind()
         if not isinstance(bind, Engine):
             raise RuntimeError("database bind is unavailable")
-        migration_ready = inspect(bind).has_table("alembic_version")
+        migration_ready = migrations_ready(bind, settings)
         migration_status = HealthStatus(status="ready" if migration_ready else "not_ready")
     except Exception as exc:  # pragma: no cover - exact driver errors vary
         database_status = HealthStatus(status="error", detail=exc.__class__.__name__)

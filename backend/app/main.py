@@ -7,6 +7,7 @@ from app.core.settings import AppEnvironment, get_settings
 from app.database.session import SessionLocal, verify_database_connectivity
 from app.services.binance_client import BinanceMarketDataClient
 from app.services.market_data_runner import MarketDataRunner
+from app.services.migration_service import apply_migrations
 
 
 def create_app() -> FastAPI:
@@ -31,6 +32,7 @@ def create_app() -> FastAPI:
             app.state.database_available = True
             return
         try:
+            apply_migrations(settings)
             app.state.database_available = verify_database_connectivity()
         except Exception:
             app.state.database_available = False
