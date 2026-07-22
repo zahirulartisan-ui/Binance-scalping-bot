@@ -16,6 +16,7 @@ from app.models.enums import (
     EntryPermission,
     MarketRegime,
     ScannerDecisionType,
+    SignalGrade,
     StrategyDirection,
     StrategySetupState,
 )
@@ -24,6 +25,7 @@ from app.models.strategy import StrategySetup
 from app.models.trading import ScannerDecision
 from app.services.indicators import atr, ema, trend_strength_proxy
 from app.services.market_regime_service import MarketRegimeService, RegimeEvaluation
+from app.services.signal_grading import SignalGradingService
 
 logger = logging.getLogger(__name__)
 STRATEGY_NAME = "Trend Pullback Continuation"
@@ -93,6 +95,10 @@ class StrategyEvaluation:
     risk_amount: Decimal | None
     reward_amount: Decimal | None
     reward_to_risk: Decimal | None
+    signal_grade: SignalGrade | None
+    signal_score: int | None
+    grade_reasons: list[str]
+    grading_factors: dict[str, Any]
     setup_age_seconds: int
     data_freshness: dict[str, Any]
     reasons: list[str]
@@ -146,6 +152,10 @@ class StrategySetupRepository:
         row.liquidity_sweep_detected = bool(result.liquidity_sweep.get("detected"))
         row.mss_detected = bool(result.market_structure_shift.get("detected"))
         row.eligible_for_signal = result.eligible_for_signal
+        row.signal_grade = result.signal_grade
+        row.signal_score = result.signal_score
+        row.grade_reasons = result.grade_reasons
+        row.grading_factors = result.grading_factors
         row.reasons = result.reasons
         row.failed_conditions = result.failed_conditions
         row.indicator_snapshot = result.indicator_snapshot
@@ -542,6 +552,7 @@ class TrendPullbackStrategyService:
             if cached is not None:
                 return cached
         result = self._evaluate(normalized, regime, candles_1m, candles_5m, candles_15m, snapshot)
+        result = self._apply_signal_grade(result)
         self.cache.set(cache_key, result)
         if self.settings.strategy_persistence_enabled:
             self.repository.upsert(db, result)
@@ -949,6 +960,10 @@ class TrendPullbackStrategyService:
             "risk_amount": None,
             "reward_amount": None,
             "reward_to_risk": None,
+            "signal_grade": None,
+            "signal_score": None,
+            "grade_reasons": [],
+            "grading_factors": {},
             "setup_age_seconds": 0,
             "data_freshness": {
                 "latest_1m_close": candles_1m[-1].close_time if candles_1m else None,
@@ -985,6 +1000,17 @@ class TrendPullbackStrategyService:
             extra={"symbol": result.symbol, "state": result.setup_state.value},
         )
         return result
+
+    def _apply_signal_grade(self, result: StrategyEvaluation) -> StrategyEvaluation:
+        grade = SignalGradingService(self.settings).grade(result)
+        payload = evaluation_to_dict(result)
+        payload.update(
+            signal_grade=grade.grade,
+            signal_score=grade.score,
+            grade_reasons=grade.reasons,
+            grading_factors=grade.factors,
+        )
+        return StrategyEvaluation(**payload)
 
     def _setup_id(self, symbol: str, now: datetime, candles: list[OhlcvCandle]) -> str:
         stamp = candles[-1].close_time.isoformat() if candles else now.isoformat()

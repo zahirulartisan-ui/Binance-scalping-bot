@@ -8,7 +8,7 @@ from sqlalchemy import CheckConstraint, Index, Numeric, String, Text, UniqueCons
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
-from app.models.enums import StrategyDirection, StrategySetupState
+from app.models.enums import SignalGrade, StrategyDirection, StrategySetupState
 from app.models.mixins import TimestampMixin, UTCDateTime, UuidPrimaryKeyMixin
 from app.models.trading import enum_values, json_type
 
@@ -24,9 +24,14 @@ class StrategySetup(UuidPrimaryKeyMixin, TimestampMixin, Base):
             f"setup_state IN ({enum_values(StrategySetupState)})",
             name="ck_strategy_setups_state",
         ),
+        CheckConstraint(
+            f"signal_grade IS NULL OR signal_grade IN ({enum_values(SignalGrade)})",
+            name="ck_strategy_setups_signal_grade",
+        ),
         UniqueConstraint("setup_id", name="uq_strategy_setups_setup_id"),
         Index("ix_strategy_setups_symbol_state_evaluated", "symbol", "setup_state", "evaluated_at"),
         Index("ix_strategy_setups_eligible_expires", "eligible_for_signal", "expires_at"),
+        Index("ix_strategy_setups_signal_grade_evaluated", "signal_grade", "evaluated_at"),
     )
 
     setup_id: Mapped[str] = mapped_column(String(160), nullable=False)
@@ -49,6 +54,10 @@ class StrategySetup(UuidPrimaryKeyMixin, TimestampMixin, Base):
     liquidity_sweep_detected: Mapped[bool] = mapped_column(default=False, nullable=False)
     mss_detected: Mapped[bool] = mapped_column(default=False, nullable=False)
     eligible_for_signal: Mapped[bool] = mapped_column(default=False, nullable=False)
+    signal_grade: Mapped[SignalGrade | None] = mapped_column(String(4))
+    signal_score: Mapped[int | None]
+    grade_reasons: Mapped[list[str]] = mapped_column(json_type, default=list, nullable=False)
+    grading_factors: Mapped[dict[str, Any]] = mapped_column(json_type, default=dict, nullable=False)
     reasons: Mapped[list[str]] = mapped_column(json_type, default=list, nullable=False)
     failed_conditions: Mapped[list[str]] = mapped_column(json_type, default=list, nullable=False)
     indicator_snapshot: Mapped[dict[str, Any]] = mapped_column(

@@ -26,7 +26,7 @@ def db_session() -> Generator[Session, None, None]:
     with engine.begin() as connection:
         connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
         connection.execute(
-            text("INSERT INTO alembic_version (version_num) VALUES ('202607210005')")
+            text("INSERT INTO alembic_version (version_num) VALUES ('202607220006')")
         )
     session_factory = sessionmaker(
         bind=engine,

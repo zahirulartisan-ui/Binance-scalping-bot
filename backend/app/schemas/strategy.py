@@ -58,6 +58,10 @@ class StrategyEvaluationResponse(BaseModel):
     risk_amount: Decimal | None
     reward_amount: Decimal | None
     reward_to_risk: Decimal | None
+    signal_grade: str | None
+    signal_score: int | None
+    grade_reasons: list[str]
+    grading_factors: dict[str, Any]
     setup_age_seconds: int
     data_freshness: dict[str, Any]
     reasons: list[str]
@@ -87,6 +91,10 @@ class StrategySetupResponse(BaseModel):
     liquidity_sweep_detected: bool
     mss_detected: bool
     eligible_for_signal: bool
+    signal_grade: str | None
+    signal_score: int | None
+    grade_reasons: list[str]
+    grading_factors: dict[str, Any]
     reasons: list[str]
     failed_conditions: list[str]
     indicator_snapshot: dict[str, Any]

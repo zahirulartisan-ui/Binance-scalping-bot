@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
+from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.core.settings import Settings
@@ -11,6 +12,7 @@ from app.models.enums import (
     CandleTimeframe,
     ScannerDecisionType,
     ScannerRunStatus,
+    SignalGrade,
     StrategySetupState,
 )
 from app.models.market_data import ExchangeSymbol, MarketSnapshot, OhlcvCandle
@@ -199,7 +201,13 @@ def test_valid_bullish_strategy_ready_and_persisted(db_session: Session) -> None
     assert result.eligible_for_signal is True
     assert result.reward_to_risk is not None
     assert result.reward_to_risk >= Decimal("1.5")
+    assert result.signal_grade in {SignalGrade.A, SignalGrade.B, SignalGrade.C}
+    assert result.signal_score is not None
+    assert result.grade_reasons
     assert db_session.query(StrategySetup).filter_by(setup_id=result.setup_id).count() == 1
+    persisted = db_session.query(StrategySetup).filter_by(setup_id=result.setup_id).one()
+    assert persisted.signal_grade == result.signal_grade
+    assert persisted.signal_score == result.signal_score
 
     repeat = service.evaluate_symbol(db_session, "ETHUSDT")
     assert repeat.setup_id == result.setup_id
@@ -219,6 +227,7 @@ def test_bearish_and_short_only_rejection(db_session: Session) -> None:
         refresh=True,
     )
     assert result.setup_state is StrategySetupState.BLOCKED_BY_REGIME
+    assert result.signal_grade is None
     assert "current spot trading mode does not support short execution" in result.reasons
 
 
@@ -329,3 +338,24 @@ def test_persistence_deduplicates(db_session: Session) -> None:
     second = service.evaluate_symbol(db_session, "ETHUSDT", refresh=True)
     assert first.setup_id == second.setup_id
     assert db_session.query(StrategySetup).filter_by(setup_id=first.setup_id).count() == 1
+
+
+def test_signal_grading_is_deterministic_and_exposed_in_api(
+    db_session: Session, client: TestClient
+) -> None:
+    seed_market(db_session)
+    service = TrendPullbackStrategyService(strategy_settings())
+    result = service.evaluate_symbol(db_session, "ETHUSDT", refresh=True)
+    refreshed = service.evaluate_symbol(db_session, "ETHUSDT", refresh=True)
+
+    assert result.signal_grade == refreshed.signal_grade
+    assert result.signal_score == refreshed.signal_score
+
+    response = client.get("/api/v1/strategies/setups", params={"eligible_only": True})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload
+    assert result.signal_grade is not None
+    assert payload[0]["signal_grade"] == result.signal_grade.value
+    assert payload[0]["signal_score"] == result.signal_score
+    assert payload[0]["grade_reasons"]

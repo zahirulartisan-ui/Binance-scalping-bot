@@ -1,141 +1,84 @@
-import { useEffect, useState } from "react";
-import "./App.css";
+import React from "react";
+import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ToastProvider } from "./context/ToastContext";
+import { SymbolProvider } from "./context/SymbolContext";
+import { Sidebar } from "./components/layout/Sidebar";
+import { TopBar } from "./components/layout/TopBar";
+import { DashboardPage } from "./pages/DashboardPage";
+import { ScannerPage } from "./pages/ScannerPage";
+import { SignalsPage } from "./pages/SignalsPage";
+import { RegimePage } from "./pages/RegimePage";
+import { SetupsPage } from "./pages/SetupsPage";
+import { CandlesPage } from "./pages/CandlesPage";
+import { SettingsPage } from "./pages/SettingsPage";
+import { RiskControlPage } from "./pages/RiskControlPage";
+import { ActiveTradesPage } from "./pages/ActiveTradesPage";
+import { TradeJournalPage } from "./pages/TradeJournalPage";
 
-type HealthStatus = {
-  status: string;
-  detail?: string | null;
-};
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
-type HealthResponse = {
-  application: HealthStatus;
-  database: HealthStatus;
-  execution: HealthStatus;
-};
-
-const pages = ["Dashboard", "Scanner", "Signals", "Active Trades", "Journal", "Risk", "Settings"];
-
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
-
-function App() {
-  const [activePage, setActivePage] = useState(pages[0]);
-  const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [healthError, setHealthError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    async function loadHealth() {
-      try {
-        const response = await fetch(`${apiBaseUrl}/health`, { signal: controller.signal });
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        setHealth((await response.json()) as HealthResponse);
-        setHealthError(null);
-      } catch (error) {
-        if (!controller.signal.aborted) {
-          setHealth(null);
-          setHealthError(error instanceof Error ? error.message : "Unavailable");
-        }
-      }
-    }
-
-    void loadHealth();
-
-    return () => controller.abort();
-  }, []);
-
-  const apiStatus = health?.application.status ?? (healthError ? "error" : "checking");
-  const databaseStatus = health?.database.status ?? "unknown";
-  const executionStatus = health?.execution.status ?? "disabled";
+export default function App() {
+  const [isMobileOpen, setIsMobileOpen] = React.useState(false);
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <strong>Binance Scalping Bot</strong>
-          <span>Demo Trading</span>
-        </div>
-        <nav className="nav" aria-label="Main navigation">
-          {pages.map((page) => (
-            <button
-              className={page === activePage ? "active" : undefined}
-              key={page}
-              onClick={() => setActivePage(page)}
-              type="button"
-            >
-              {page}
-            </button>
-          ))}
-        </nav>
-      </aside>
-
-      <main className="workspace">
-        <header className="topbar">
-          <div className="status-group">
-            <span className="status-pill">
-              <span className={`status-dot ${apiStatus === "ok" ? "ok" : ""}`} />
-              API {apiStatus}
-            </span>
-            <span className="status-pill">
-              <span className={`status-dot ${databaseStatus === "ok" ? "ok" : ""}`} />
-              Database {databaseStatus}
-            </span>
-          </div>
-          <div className="status-group">
-            <span className="status-pill">
-              <span className="status-dot warn" />
-              Demo Trading
-            </span>
-            <span className="status-pill">
-              <span className="status-dot warn" />
-              Execution {executionStatus === "disabled" ? "Disabled" : "Enabled"}
-            </span>
-          </div>
-        </header>
-
-        <section className="content">
-          <div className="page-header">
-            <h1 className="page-title">{activePage}</h1>
-            <div className="page-subtitle">Batch 1 foundation shell. No live trading logic is active.</div>
-          </div>
-
-          <div className="terminal-grid">
-            <section className="panel">
-              <h2>Application</h2>
-              <div className="metric">
-                <span className="status-label">Backend health</span>
-                <span className="metric-value">{apiStatus}</span>
+    <QueryClientProvider client={queryClient}>
+      <ToastProvider>
+        <SymbolProvider>
+          <HashRouter>
+            <div className="flex min-h-screen bg-[#090d16] text-slate-100 font-sans antialiased selection:bg-amber-500 selection:text-black">
+              {/* Desktop Sidebar (Persistent) */}
+              <div className="hidden lg:block w-64 border-r border-slate-800/80 shrink-0 sticky top-0 h-screen">
+                <Sidebar />
               </div>
-            </section>
-            <section className="panel">
-              <h2>Database</h2>
-              <div className="metric">
-                <span className="status-label">PostgreSQL connectivity</span>
-                <span className="metric-value">{databaseStatus}</span>
-              </div>
-            </section>
-            <section className="panel">
-              <h2>Execution</h2>
-              <div className="metric">
-                <span className="status-label">Live orders</span>
-                <span className="metric-value">Disabled</span>
-              </div>
-            </section>
-          </div>
 
-          <section className="panel" style={{ marginTop: 14 }}>
-            <h2>{activePage} Workspace</h2>
-            <p className="placeholder">
-              This page is intentionally limited to navigation and backend health visibility for Batch
-              1. Trading data, balances, signals, positions, and performance metrics are not
-              implemented.
-            </p>
-          </section>
-        </section>
-      </main>
-    </div>
+              {/* Mobile Drawer Backdrop */}
+              {isMobileOpen && (
+                <div
+                  className="fixed inset-0 bg-black/70 z-40 lg:hidden backdrop-blur-sm transition-opacity"
+                  onClick={() => setIsMobileOpen(false)}
+                />
+              )}
+
+              {/* Mobile Drawer Sidebar */}
+              <div
+                className={`fixed inset-y-0 left-0 w-64 bg-slate-950 border-r border-slate-800/80 z-50 transform lg:hidden transition-transform duration-300 ease-in-out ${
+                  isMobileOpen ? "translate-x-0" : "-translate-x-full"
+                }`}
+              >
+                <Sidebar onClose={() => setIsMobileOpen(false)} />
+              </div>
+
+              {/* Main Content Area */}
+              <div className="flex-1 flex flex-col min-w-0">
+                <TopBar onMenuClick={() => setIsMobileOpen(true)} />
+                <main className="flex-1 overflow-y-auto">
+                  <Routes>
+                    <Route path="/" element={<DashboardPage />} />
+                    <Route path="/scanner" element={<ScannerPage />} />
+                    <Route path="/signals" element={<SignalsPage />} />
+                    <Route path="/regime" element={<RegimePage />} />
+                    <Route path="/setups" element={<SetupsPage />} />
+                    <Route path="/candles" element={<CandlesPage />} />
+                    <Route path="/risk" element={<RiskControlPage />} />
+                    <Route path="/active-trades" element={<ActiveTradesPage />} />
+                    <Route path="/trade-journal" element={<TradeJournalPage />} />
+                    <Route path="/settings" element={<SettingsPage />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                  </Routes>
+                </main>
+              </div>
+            </div>
+          </HashRouter>
+        </SymbolProvider>
+      </ToastProvider>
+    </QueryClientProvider>
   );
 }
-
-export default App;

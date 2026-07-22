@@ -109,6 +109,9 @@ class Settings(BaseSettings):
     strategy_maximum_spread_bps: float = Field(default=12.0, ge=0, le=1000)
     strategy_cache_ttl_seconds: int = Field(default=15, ge=1, le=3600)
     strategy_persistence_enabled: bool = True
+    strategy_signal_grade_a_min: int = Field(default=85, ge=1, le=100)
+    strategy_signal_grade_b_min: int = Field(default=70, ge=1, le=100)
+    strategy_signal_grade_c_min: int = Field(default=55, ge=1, le=100)
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -166,6 +169,12 @@ class Settings(BaseSettings):
             raise ValueError("strategy minimum pullback must be below maximum pullback")
         if self.strategy_minimum_stop_percent >= self.strategy_maximum_stop_percent:
             raise ValueError("strategy minimum stop must be below maximum stop")
+        if not (
+            self.strategy_signal_grade_a_min
+            > self.strategy_signal_grade_b_min
+            > self.strategy_signal_grade_c_min
+        ):
+            raise ValueError("strategy signal grade thresholds must descend A > B > C")
         return self
 
     @field_serializer("binance_demo_api_key", "binance_demo_api_secret")
@@ -207,6 +216,9 @@ class Settings(BaseSettings):
             "strategy_context_timeframe": self.strategy_context_timeframe,
             "strategy_minimum_reward_to_risk": self.strategy_minimum_reward_to_risk,
             "strategy_persistence_enabled": self.strategy_persistence_enabled,
+            "strategy_signal_grade_a_min": self.strategy_signal_grade_a_min,
+            "strategy_signal_grade_b_min": self.strategy_signal_grade_b_min,
+            "strategy_signal_grade_c_min": self.strategy_signal_grade_c_min,
         }
 
 

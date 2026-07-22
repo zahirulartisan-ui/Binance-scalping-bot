@@ -136,3 +136,9 @@ class StrategyDirection(StrEnum):
     LONG = "LONG"
     SHORT = "SHORT"
     NONE = "NONE"
+
+
+class SignalGrade(StrEnum):
+    A = "A"
+    B = "B"
+    C = "C"

@@ -30,12 +30,15 @@ def test_migration_upgrade_downgrade_upgrade(monkeypatch) -> None:  # type: igno
     assert "market_data_cycles" in inspector.get_table_names()
     assert "market_regime_snapshots" in inspector.get_table_names()
     assert "strategy_setups" in inspector.get_table_names()
+    columns = {column["name"] for column in inspector.get_columns("strategy_setups")}
+    assert "signal_grade" in columns
+    assert "signal_score" in columns
 
-    command.downgrade(config, "202607210004")
+    command.downgrade(config, "202607210005")
     inspector = inspect(engine)
-    assert "exchange_symbols" in inspector.get_table_names()
-    assert "market_regime_snapshots" in inspector.get_table_names()
-    assert "strategy_setups" not in inspector.get_table_names()
+    columns = {column["name"] for column in inspector.get_columns("strategy_setups")}
+    assert "signal_grade" not in columns
+    assert "signal_score" not in columns
 
     command.upgrade(config, "head")
     inspector = inspect(engine)
