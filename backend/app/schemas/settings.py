@@ -18,6 +18,8 @@ class PublicSettings(BaseModel):
     demo_trading_mode: bool
     demo_account_balance: float
     scanner_interval_seconds: int
+    signal_execution_automation_enabled: bool
+    signal_execution_batch_size: int
     risk_per_trade: float
     maximum_open_trades: int
     daily_loss_limit: float
@@ -34,6 +36,8 @@ class RuntimeSettingsPatch(BaseModel):
     demo_trading_mode: bool | None = None
     demo_account_balance: float | None = Field(default=None, gt=0, le=1000000000)
     scanner_interval_seconds: int | None = Field(default=None, ge=5, le=3600)
+    signal_execution_automation_enabled: bool | None = None
+    signal_execution_batch_size: int | None = Field(default=None, ge=1, le=100)
     risk_per_trade: float | None = Field(default=None, gt=0, le=0.05)
     maximum_open_trades: int | None = Field(default=None, ge=0, le=50)
     daily_loss_limit: float | None = Field(default=None, gt=0, le=0.5)

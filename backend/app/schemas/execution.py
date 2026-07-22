@@ -122,6 +122,14 @@ class SignalExecutionResponse(BaseModel):
     position: PositionResponse
 
 
+class SyncOrdersResponse(BaseModel):
+    checked_orders: int
+    updated_orders: int
+    new_fills: int
+    closed_positions: int
+    reasons: list[str]
+
+
 class PositionManagementResponse(BaseModel):
     action: str
     position: PositionResponse

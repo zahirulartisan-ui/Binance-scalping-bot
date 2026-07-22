@@ -16,6 +16,8 @@ RUNTIME_SETTING_TYPES: dict[str, AppSettingValueType] = {
     "demo_trading_mode": AppSettingValueType.BOOLEAN,
     "demo_account_balance": AppSettingValueType.DECIMAL,
     "scanner_interval_seconds": AppSettingValueType.INTEGER,
+    "signal_execution_automation_enabled": AppSettingValueType.BOOLEAN,
+    "signal_execution_batch_size": AppSettingValueType.INTEGER,
     "risk_per_trade": AppSettingValueType.DECIMAL,
     "maximum_open_trades": AppSettingValueType.INTEGER,
     "daily_loss_limit": AppSettingValueType.DECIMAL,

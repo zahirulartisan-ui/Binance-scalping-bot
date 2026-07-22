@@ -30,14 +30,20 @@ def test_secret_values_are_redacted() -> None:
     settings = Settings(
         binance_demo_api_key="demo-key",
         binance_demo_api_secret="demo-secret",
+        binance_api_key="live-key",
+        binance_api_secret="live-secret",
     )
 
     dumped = settings.model_dump()
 
     assert dumped["binance_demo_api_key"] == "********"
     assert dumped["binance_demo_api_secret"] == "********"
+    assert dumped["binance_api_key"] == "********"
+    assert dumped["binance_api_secret"] == "********"
     assert "demo-key" not in str(dumped)
     assert "demo-secret" not in str(dumped)
+    assert "live-key" not in str(dumped)
+    assert "live-secret" not in str(dumped)
 
 
 def test_settings_accepts_comma_separated_and_json_list_env_values() -> None:
@@ -58,3 +64,13 @@ def test_settings_accepts_comma_separated_and_json_list_env_values() -> None:
     assert comma_settings.market_data_symbols == ["BTCUSDT", "ETHUSDT"]
     assert json_settings.allowed_origins == ["https://a.example", "https://b.example"]
     assert json_settings.market_data_symbols == ["BTCUSDT", "ETHUSDT"]
+
+
+def test_live_execution_requires_real_credentials() -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            app_env=AppEnvironment.TEST,
+            database_url="sqlite+pysqlite:///:memory:",
+            execution_enabled=True,
+            demo_trading_mode=False,
+        )

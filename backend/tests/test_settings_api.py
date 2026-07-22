@@ -11,6 +11,7 @@ def test_settings_api_returns_public_non_secret_settings(client: TestClient) -> 
     assert "database_url" not in payload
     assert payload["execution_enabled"] is False
     assert payload["position_monitoring_enabled"] is True
+    assert payload["signal_execution_automation_enabled"] is False
 
 
 def test_settings_api_validates_and_persists_runtime_updates(client: TestClient) -> None:
@@ -24,6 +25,8 @@ def test_settings_api_validates_and_persists_runtime_updates(client: TestClient)
             "execution_enabled": False,
             "position_monitoring_enabled": False,
             "position_monitoring_interval_seconds": 30,
+            "signal_execution_automation_enabled": True,
+            "signal_execution_batch_size": 8,
         },
     )
 
@@ -36,6 +39,8 @@ def test_settings_api_validates_and_persists_runtime_updates(client: TestClient)
     assert payload["execution_enabled"] is False
     assert payload["position_monitoring_enabled"] is False
     assert payload["position_monitoring_interval_seconds"] == 30
+    assert payload["signal_execution_automation_enabled"] is True
+    assert payload["signal_execution_batch_size"] == 8
 
 
 def test_settings_api_rejects_unsafe_execution_update(client: TestClient) -> None:

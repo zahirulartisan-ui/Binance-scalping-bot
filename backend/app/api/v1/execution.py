@@ -25,6 +25,7 @@ from app.schemas.execution import (
     PositionResponse,
     RiskDecisionResponse,
     SignalExecutionResponse,
+    SyncOrdersResponse,
 )
 from app.services.execution_service import (
     ExecutionConflictError,
@@ -128,10 +129,11 @@ def _execution_response(
     position: Position,
     reused: bool,
 ) -> SignalExecutionResponse:
+    mode = (order.metadata_json or {}).get("mode") or (position.metadata_json or {}).get("mode") or "demo"
     return SignalExecutionResponse(
         signal_id=str(signal.id),
         reused=reused,
-        mode="demo",
+        mode=str(mode),
         risk_decision=_risk_decision_response(decision),
         order=_order_response(order),
         position=_position_response(position),
@@ -341,4 +343,19 @@ def run_monitor(
         checked_count=result.checked_count,
         action_count=len(result.actions),
         actions=[_position_management_response(item) for item in result.actions],
+    )
+
+
+@router.post("/sync", response_model=SyncOrdersResponse)
+def sync_live_orders(
+    db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> SyncOrdersResponse:
+    result = ExecutionService(settings).sync_live_orders(db)
+    return SyncOrdersResponse(
+        checked_orders=result.checked_orders,
+        updated_orders=result.updated_orders,
+        new_fills=result.new_fills,
+        closed_positions=result.closed_positions,
+        reasons=result.reasons,
     )

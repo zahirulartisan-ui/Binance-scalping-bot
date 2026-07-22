@@ -43,14 +43,22 @@ class Settings(BaseSettings):
     allowed_origins: list[str] = ["http://localhost:5173"]
     binance_demo_api_key: SecretStr | None = None
     binance_demo_api_secret: SecretStr | None = None
+    binance_api_key: SecretStr | None = None
+    binance_api_secret: SecretStr | None = None
     execution_enabled: bool = False
     demo_trading_mode: bool = True
     demo_account_balance: float = Field(default=1000.0, gt=0, le=1000000000)
     scanner_interval_seconds: int = Field(default=30, ge=5, le=3600)
+    signal_execution_automation_enabled: bool = False
+    signal_execution_batch_size: int = Field(default=10, ge=1, le=100)
     risk_per_trade: float = Field(default=0.01, gt=0, le=0.05)
     maximum_open_trades: int = Field(default=3, ge=0, le=50)
     daily_loss_limit: float = Field(default=0.03, gt=0, le=0.5)
     emergency_stop: bool = False
+    binance_trading_base_url: str = "https://api.binance.com"
+    binance_trading_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
+    binance_trading_max_retries: int = Field(default=2, ge=0, le=5)
+    binance_trading_backoff_seconds: float = Field(default=0.25, ge=0, le=5)
     position_monitoring_enabled: bool = True
     position_monitoring_interval_seconds: int = Field(default=15, ge=5, le=300)
     position_monitoring_price_max_age_seconds: int = Field(default=75, ge=5, le=600)
@@ -181,6 +189,9 @@ class Settings(BaseSettings):
                 raise ValueError("production mode cannot allow wildcard CORS origins")
             if "localhost" in self.database_url or "127.0.0.1" in self.database_url:
                 raise ValueError("production mode cannot use a local database URL")
+        if self.execution_enabled and not self.demo_trading_mode:
+            if self.binance_api_key is None or self.binance_api_secret is None:
+                raise ValueError("live execution requires BINANCE_API_KEY and BINANCE_API_SECRET")
         if self.strategy_entry_timeframe != "1m":
             raise ValueError("trend pullback strategy entry timeframe must be 1m")
         if self.strategy_confirmation_timeframe != "5m":
@@ -203,7 +214,12 @@ class Settings(BaseSettings):
             raise ValueError("strategy signal grade thresholds must descend A > B > C")
         return self
 
-    @field_serializer("binance_demo_api_key", "binance_demo_api_secret")
+    @field_serializer(
+        "binance_demo_api_key",
+        "binance_demo_api_secret",
+        "binance_api_key",
+        "binance_api_secret",
+    )
     def serialize_secret(self, value: SecretStr | None) -> str | None:
         if value is None:
             return None
@@ -225,6 +241,8 @@ class Settings(BaseSettings):
             "demo_trading_mode": self.demo_trading_mode,
             "demo_account_balance": self.demo_account_balance,
             "scanner_interval_seconds": self.scanner_interval_seconds,
+            "signal_execution_automation_enabled": self.signal_execution_automation_enabled,
+            "signal_execution_batch_size": self.signal_execution_batch_size,
             "risk_per_trade": self.risk_per_trade,
             "maximum_open_trades": self.maximum_open_trades,
             "daily_loss_limit": self.daily_loss_limit,
