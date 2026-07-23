@@ -14,10 +14,22 @@ def test_health_reports_disabled_execution(client: TestClient) -> None:
     assert payload["emergency_stop"]["status"] == "inactive"
     assert payload["migrations"]["status"] == "ready"
 
-    # Verify new USD-M Futures response contract (12. Secrets are absent from health)
-    assert payload["exchange_scope"] == "Binance"
-    assert payload["product_type"] == "USD-M Futures"
-    assert payload["endpoint_allowlist_status"] in {"verified", "invalid"}
+    # Verify new USD-M Futures response contract
+    assert payload["exchange_scope"]["status"] == "binance"
+    assert payload["product_type"]["status"] == "usd_m_futures"
+    assert payload["trading_environment"]["status"] == "futures_demo_only"
+
+    # Endpoints allowlist and safety
+    assert payload["endpoints"]["trading_base_url"] == "https://demo-fapi.binance.com"
+    assert payload["endpoints"]["trading_endpoint_allowlisted"] is True
+    assert "demo-fapi.binance.com" in payload["endpoints"]["allowlisted_hosts"]
+
+    # Safety
+    assert payload["safety"]["enabled"] is False
+    assert payload["safety"]["ready"] is False
+    assert payload["safety"]["emergency_stop_active"] is False
+
+    # Secrets are absent from health
     assert "api_key" not in payload
     assert "api_secret" not in payload
     assert "private_key" not in payload
