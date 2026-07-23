@@ -1,6 +1,6 @@
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -11,7 +11,7 @@ from app.database.base import Base
 settings = get_settings()
 
 
-def _build_engine():
+def _build_engine() -> Engine:
     database_url = str(settings.database_url)
     engine_kwargs: dict[str, object] = {"pool_pre_ping": True}
 
@@ -32,7 +32,7 @@ def _build_engine():
     return engine
 
 
-engine = _build_engine()
+engine: Engine = _build_engine()
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
 
