@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -8,7 +9,7 @@ from app.services.binance_trading_client import BinanceTradingClient
 
 
 def test_create_order_signs_payload_and_sets_api_key_header() -> None:
-    captured: dict[str, object] = {}
+    captured: dict[str, Any] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
         captured["query"] = parse_qs(urlparse(str(request.url)).query)

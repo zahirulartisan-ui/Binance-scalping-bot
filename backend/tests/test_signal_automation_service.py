@@ -109,9 +109,9 @@ def _create_signal(
 def test_signal_automation_service_respects_runtime_disable_flag(db_session: Session) -> None:
     service = SignalAutomationService(
         _settings(),
-        scanner_service=FakeScannerService(),
-        signals_service=FakeSignalsService([]),
-        execution_service=FakeExecutionService(),
+        scanner_service=FakeScannerService(),  # type: ignore[arg-type]
+        signals_service=FakeSignalsService([]),  # type: ignore[arg-type]
+        execution_service=FakeExecutionService(),  # type: ignore[arg-type]
     )
 
     result = service.run_cycle(db_session)
@@ -145,9 +145,9 @@ def test_signal_automation_service_scans_promotes_and_executes(db_session: Sessi
     execution = FakeExecutionService(reused_ids={second.id})
     service = SignalAutomationService(
         _settings(),
-        scanner_service=scanner,
-        signals_service=FakeSignalsService([first, second]),
-        execution_service=execution,
+        scanner_service=scanner,  # type: ignore[arg-type]
+        signals_service=FakeSignalsService([first, second]),  # type: ignore[arg-type]
+        execution_service=execution,  # type: ignore[arg-type]
     )
 
     result = service.run_cycle(db_session)
@@ -180,9 +180,9 @@ def test_signal_automation_service_tracks_blocked_execution(db_session: Session)
     execution = FakeExecutionService(blocked_ids={signal.id})
     service = SignalAutomationService(
         _settings(),
-        scanner_service=FakeScannerService(),
-        signals_service=FakeSignalsService([signal]),
-        execution_service=execution,
+        scanner_service=FakeScannerService(),  # type: ignore[arg-type]
+        signals_service=FakeSignalsService([signal]),  # type: ignore[arg-type]
+        execution_service=execution,  # type: ignore[arg-type]
     )
 
     result = service.run_cycle(db_session)

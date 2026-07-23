@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,7 +15,7 @@ DECIMAL_ZERO = Decimal("0")
 
 
 class TradesService:
-    def list_active_trades(self, db: Session) -> dict[str, list[dict[str, object]]]:
+    def list_active_trades(self, db: Session) -> dict[str, Any]:
         positions = list(
             db.scalars(
                 select(Position)
@@ -45,7 +46,7 @@ class TradesService:
             "orders": [self._order_payload(row) for row in orders],
         }
 
-    def list_trade_journal(self, db: Session) -> dict[str, list[dict[str, object]]]:
+    def list_trade_journal(self, db: Session) -> dict[str, Any]:
         rows = list(
             db.scalars(
                 select(Position)
@@ -262,7 +263,7 @@ class TradesService:
             return None
         return Decimal(str(value))
 
-    def _enum_string(self, value: object) -> str:
+    def _enum_string(self, value: Any) -> str:
         if isinstance(value, str):
             return value
         return str(value.value)
