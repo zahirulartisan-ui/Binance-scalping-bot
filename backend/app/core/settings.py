@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     api_port: int = Field(default=8000, ge=1, le=65535)
     log_level: LogLevel = LogLevel.INFO
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/binance_scalping_bot"
-    allowed_origins: list[str] = ["http://localhost:5173"]
+    allowed_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
     binance_futures_demo_base_url: str = Field(default="https://demo-fapi.binance.com")
     binance_futures_demo_market_data_url: str = Field(default="https://demo-fapi.binance.com")
     binance_futures_demo_api_key: SecretStr | None = None

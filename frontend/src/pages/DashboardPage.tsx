@@ -28,6 +28,19 @@ export const DashboardPage: React.FC = () => {
   const { setSelectedSymbol } = useSymbol();
   const isTabVisible = useTabVisibility();
 
+  const toNumber = (value: unknown, fallback = 0): number => {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === "string") {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+    return fallback;
+  };
+
   // Poll health every 15s (paused if tab is hidden)
   const {
     data: health,
@@ -101,6 +114,9 @@ export const DashboardPage: React.FC = () => {
   const isError = isErrorHealth || isErrorMarketStatus || isErrorRegime || isErrorSetups || isErrorTelemetry;
   const anyError = errorHealth || errorMarketStatus || errorRegime || errorSetups || errorTelemetry;
   const isRetrying = isFetchingHealth;
+  const totalUnrealizedPnl = toNumber(telemetry?.summary?.total_unrealized_pnl);
+  const regimeConfidenceScore = toNumber(btcRegime?.confidence_score, 0.85);
+  const trendStrengthValue = toNumber(btcRegime?.trend_strength_value, 0.76);
 
   if (isError) {
     return (
@@ -163,9 +179,9 @@ export const DashboardPage: React.FC = () => {
         </div>
         <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-xl">
           <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Unrealized PnL</div>
-          <div className={`mt-1 text-2xl font-bold font-mono ${(telemetry?.summary?.total_unrealized_pnl ?? 0) >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-            {(telemetry?.summary?.total_unrealized_pnl ?? 0) >= 0 ? "+" : ""}
-            ${(telemetry?.summary?.total_unrealized_pnl ?? 0).toFixed(2)}
+          <div className={`mt-1 text-2xl font-bold font-mono ${totalUnrealizedPnl >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+            {totalUnrealizedPnl >= 0 ? "+" : ""}
+            ${totalUnrealizedPnl.toFixed(2)}
           </div>
         </div>
       </section>
@@ -353,13 +369,13 @@ export const DashboardPage: React.FC = () => {
                 <div className="flex items-center justify-between text-xs text-slate-300 mb-1.5">
                   <span className="text-slate-400">Regime Confidence Score:</span>
                   <span className="font-bold text-amber-400">
-                    {Math.round((btcRegime?.confidence_score || 0.85) * 100)}%
+                    {Math.round(regimeConfidenceScore * 100)}%
                   </span>
                 </div>
                 <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden p-0.5 border border-slate-700">
                   <div
                     className="bg-gradient-to-r from-amber-500 to-emerald-400 h-1.5 rounded-full transition-all duration-500"
-                    style={{ width: `${Math.round((btcRegime?.confidence_score || 0.85) * 100)}%` }}
+                    style={{ width: `${Math.round(regimeConfidenceScore * 100)}%` }}
                   />
                 </div>
               </div>
@@ -372,7 +388,7 @@ export const DashboardPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="text-[11px] text-slate-400 flex items-center justify-between">
-                  <span>Trend Strength: {(btcRegime?.trend_strength_value || 0.76).toFixed(2)}</span>
+                  <span>Trend Strength: {trendStrengthValue.toFixed(2)}</span>
                   <span>Spread: {btcRegime?.spread_value ? `${btcRegime.spread_value} bps` : "1.2 bps"}</span>
                 </div>
               )}
@@ -502,10 +518,10 @@ export const DashboardPage: React.FC = () => {
                       <Badge text={setup.setup_state} variant="setup_state" size="sm" />
                     </td>
                     <td className="py-2.5 px-3 text-right font-semibold text-slate-100">
-                      ${setup.preferred_entry.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      ${toNumber(setup.preferred_entry).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </td>
                     <td className="py-2.5 px-3 text-right font-bold text-emerald-400">
-                      {setup.reward_to_risk ? setup.reward_to_risk.toFixed(2) : "N/A"}
+                      {setup.reward_to_risk ? toNumber(setup.reward_to_risk).toFixed(2) : "N/A"}
                     </td>
                     <td className="py-2.5 px-3 text-center">
                       {setup.eligible_for_signal ? (

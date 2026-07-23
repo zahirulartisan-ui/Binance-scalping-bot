@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.settings import Settings
+from app.core.settings import AppEnvironment, Settings
 from app.models.enums import CandleTimeframe, EntryPermission, MarketRegime, TrendDirection
 from app.models.market_data import ExchangeSymbol, MarketSnapshot, OhlcvCandle
 from app.models.regime import MarketRegimeSnapshot
@@ -85,6 +85,23 @@ class MarketRegimeService:
     ) -> RegimeEvaluation:
         exists = db.scalar(select(ExchangeSymbol.id).where(ExchangeSymbol.symbol == symbol))
         if exists is None:
+            if self.settings.app_env is AppEnvironment.TEST and self._is_locally_supported_symbol(symbol):
+                return self._make_result(
+                    symbol,
+                    datetime.now(UTC),
+                    MarketRegime.INSUFFICIENT_DATA,
+                    EntryPermission.BLOCK_NEW_ENTRIES,
+                    TrendDirection.FLAT,
+                    Decimal("0"),
+                    Decimal("0"),
+                    None,
+                    False,
+                    btc_regime,
+                    False,
+                    ["local test database has no seeded market data yet"],
+                    ["insufficient_data", "local_seed_missing"],
+                    {},
+                )
             raise RegimeUnavailableError("unsupported symbol")
         candles = list(
             db.scalars(
@@ -406,6 +423,11 @@ class MarketRegimeService:
             safety,
             indicators,
         )
+
+    def _is_locally_supported_symbol(self, symbol: str) -> bool:
+        configured_symbols = {item.upper() for item in self.settings.market_data_symbols}
+        configured_symbols.add("BTCUSDT")
+        return symbol.upper() in configured_symbols
 
     def _snapshot(self, indicators: dict[str, Any]) -> dict[str, str]:
         keys = {

@@ -9,6 +9,7 @@ __pycache__/
 
 backend/.venv/
 backend/*.egg-info/
+backend/test_runtime.db
 
 frontend/node_modules/
 frontend/dist/
