@@ -48,12 +48,12 @@ def health_check(
 
     database_ready = database_status.status == "ok"
     credentials_ready = (
-        settings.binance_demo_api_key is not None
-        and settings.binance_demo_api_secret is not None
+        settings.binance_futures_demo_api_key is not None
+        and settings.binance_futures_demo_api_secret is not None
     )
-    trading_endpoint_allowlisted = _endpoint_is_allowlisted(settings.binance_trading_base_url)
+    trading_endpoint_allowlisted = _endpoint_is_allowlisted(settings.binance_futures_demo_base_url)
     market_data_endpoint_allowlisted = _endpoint_is_allowlisted(
-        settings.binance_market_data_base_url
+        settings.binance_futures_demo_market_data_url
     )
     endpoint_safe = trading_endpoint_allowlisted and market_data_endpoint_allowlisted
 
@@ -99,8 +99,8 @@ def health_check(
         product_type=HealthStatus(status="usd_m_futures", detail="USDT perpetual futures only"),
         trading_environment=HealthStatus(status="futures_demo_only"),
         endpoints=EndpointSafetyStatus(
-            trading_base_url=settings.binance_trading_base_url,
-            market_data_base_url=settings.binance_market_data_base_url,
+            trading_base_url=settings.binance_futures_demo_base_url,
+            market_data_base_url=settings.binance_futures_demo_market_data_url,
             trading_endpoint_allowlisted=trading_endpoint_allowlisted,
             market_data_endpoint_allowlisted=market_data_endpoint_allowlisted,
             allowlisted_hosts=sorted(FUTURES_DEMO_ALLOWLISTED_HOSTS),
