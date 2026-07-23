@@ -1,7 +1,7 @@
 # Binance Scalping Bot
 
 ## ⚠️ Binance USD-M Futures Demo Safety Foundation ONLY
-This application is strictly locked to **Binance USD-M Futures Demo-only operation** on the official Binance testnet environment (`https://testnet.binancefuture.com`).
+This application is strictly locked to **Binance USD-M Futures Demo-only operation** on the official Binance testnet environment (`https://demo-fapi.binance.com`).
 - **No Spot trading** is supported. All previous spot assumptions have been removed or blocked.
 - **No Binance production trading** is supported. Unsafe production endpoints/hosts are strictly rejected.
 - **No real-money support** is provided.

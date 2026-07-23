@@ -55,7 +55,7 @@ def health_check(
             break
         try:
             parsed = urlparse(url_val)
-            if parsed.scheme != "https" or parsed.netloc != "testnet.binancefuture.com":
+            if parsed.scheme != "https" or parsed.netloc != "demo-fapi.binance.com":
                 endpoint_allowlist_status = "invalid"
                 break
         except Exception:
