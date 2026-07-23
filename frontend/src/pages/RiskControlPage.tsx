@@ -286,7 +286,7 @@ export const RiskControlPage: React.FC = () => {
       ? "You are enabling automated order dispatch. The bot will begin placing trades on Binance based on identified setups."
       : "You are disabling order dispatch. The bot will continue scanning but will not enter new positions.";
     const warning = active
-      ? "CRITICAL: The bot will enter demo/live trades automatically using the allocated risk parameters."
+      ? "CRITICAL: The bot will enter Binance Spot Demo trades automatically using the allocated risk parameters."
       : "Note: Active open trades may still need manual management or will close on Take Profit/Stop Loss.";
 
     setConfirmModal({
@@ -561,13 +561,13 @@ export const RiskControlPage: React.FC = () => {
 
             {/* Demo trading mode */}
             <div className="flex items-center justify-between p-2.5 bg-slate-950 rounded-lg border border-slate-800">
-              <span className="text-slate-400 font-bold">Simulated Execution Environment</span>
+              <span className="text-slate-400 font-bold">Execution Environment</span>
               <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
                 settings?.demo_trading_mode
                   ? "bg-sky-950 border border-sky-800 text-sky-400"
                   : "bg-rose-950 border border-rose-800 text-rose-400"
               }`}>
-                {isLoadingSettings ? "..." : settings?.demo_trading_mode ? "DEMO MODE (VIRTUAL)" : "LIVE DISPATCH (WARNING)"}
+                {isLoadingSettings ? "..." : settings?.demo_trading_mode ? "BINANCE SPOT DEMO" : "BLOCKED"}
               </span>
             </div>
           </div>

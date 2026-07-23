@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.enums import OrderSide, OrderStatus, PositionStatus
+from app.models.market_data import MarketSnapshot
 from app.models.trading import Order, Position, SystemEvent, TradeJournalEntry
 
 DECIMAL_ZERO = Decimal("0")
@@ -35,7 +36,9 @@ class TradesService:
                 "total_positions": len(positions),
                 "total_orders": len(orders),
                 "total_open_quantity": sum((row.quantity for row in positions), DECIMAL_ZERO),
-                "total_unrealized_pnl": sum((row.unrealized_pnl for row in positions), DECIMAL_ZERO),
+                "total_unrealized_pnl": sum(
+                    (row.unrealized_pnl for row in positions), DECIMAL_ZERO
+                ),
                 "total_realized_pnl": sum((row.realized_pnl for row in positions), DECIMAL_ZERO),
                 "last_synced_at": last_synced_at,
             },
@@ -69,18 +72,20 @@ class TradesService:
                 "losses": losses,
                 "win_rate": win_rate.quantize(Decimal("0.01")),
                 "net_pnl": net_pnl,
-                "average_pnl": average_pnl.quantize(Decimal("0.01")) if total_trades > 0 else DECIMAL_ZERO,
+                "average_pnl": average_pnl.quantize(Decimal("0.01"))
+                if total_trades > 0
+                else DECIMAL_ZERO,
             },
             "trades": trades,
         }
 
-    def telemetry_feed(self, db: Session, event_limit: int = 20, journal_limit: int = 10) -> dict[str, object]:
+    def telemetry_feed(
+        self, db: Session, event_limit: int = 20, journal_limit: int = 10
+    ) -> dict[str, object]:
         active = self.list_active_trades(db)
         journal = self.list_trade_journal(db)
         system_events = list(
-            db.scalars(
-                select(SystemEvent).order_by(SystemEvent.event_at.desc()).limit(event_limit)
-            )
+            db.scalars(select(SystemEvent).order_by(SystemEvent.event_at.desc()).limit(event_limit))
         )
         journal_entries = list(
             db.scalars(
@@ -103,14 +108,14 @@ class TradesService:
         current_price = row.average_entry_price
         stop_loss = self._decimal_or_none(metadata.get("stop_loss_price"))
         take_profit = self._decimal_or_none(metadata.get("take_profit_price"))
-        latest_exit = db.scalar(
-            select(Order)
-            .where(Order.position_id == row.id, Order.side == OrderSide.SELL)
-            .order_by(Order.created_at.desc())
+        latest_snapshot = db.scalar(
+            select(MarketSnapshot)
+            .where(MarketSnapshot.symbol == row.symbol)
+            .order_by(MarketSnapshot.snapshot_at.desc())
             .limit(1)
         )
-        if latest_exit is not None and latest_exit.price is not None:
-            current_price = latest_exit.price
+        if latest_snapshot is not None:
+            current_price = latest_snapshot.last_price
 
         pnl = (current_price - row.average_entry_price) * row.quantity + row.realized_pnl
         return {
@@ -195,7 +200,13 @@ class TradesService:
             "take_profit": take_profit,
             "risk_reward": risk_reward,
             "pnl": row.realized_pnl,
-            "result": "WIN" if row.realized_pnl >= DECIMAL_ZERO else "LOSS",
+            "result": (
+                "WIN"
+                if row.realized_pnl > DECIMAL_ZERO
+                else "LOSS"
+                if row.realized_pnl < DECIMAL_ZERO
+                else "BREAKEVEN"
+            ),
             "opened_at": row.opened_at,
             "closed_at": row.closed_at,
             "duration_minutes": duration_minutes,

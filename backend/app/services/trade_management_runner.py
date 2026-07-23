@@ -15,6 +15,7 @@ from app.models.enums import PositionStatus, SystemEventLevel
 from app.models.market_data import MarketSnapshot
 from app.models.trading import Position, SystemEvent
 from app.services.binance_client import BinanceMarketDataClient
+from app.services.binance_trading_client import BinanceTradingClient
 from app.services.execution_service import ExecutionService
 from app.services.settings_service import get_public_settings
 
@@ -27,10 +28,12 @@ class TradeManagementRunner:
         settings: Settings,
         session_factory: Callable[[], Session],
         client: BinanceMarketDataClient,
+        trading_client: BinanceTradingClient | None = None,
     ) -> None:
         self.settings = settings
         self.session_factory = session_factory
         self.client = client
+        self.trading_client = trading_client
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._cycle_lock = threading.Lock()
@@ -82,9 +85,7 @@ class TradeManagementRunner:
         if not bool(runtime["position_monitoring_enabled"]):
             return
 
-        rows = list(
-            db.scalars(select(Position).where(Position.status == PositionStatus.OPEN))
-        )
+        rows = list(db.scalars(select(Position).where(Position.status == PositionStatus.OPEN)))
         symbols = sorted({row.symbol for row in rows if self._is_demo_position(row)})
         if not symbols:
             return
@@ -108,7 +109,10 @@ class TradeManagementRunner:
             except Exception:
                 unavailable_symbols.append(symbol)
 
-        result = ExecutionService(self.settings).run_monitor(
+        result = ExecutionService(
+            self.settings,
+            trading_client=self.trading_client,
+        ).run_monitor(
             db,
             prices=prices,
             note="continuous_monitor",
@@ -118,9 +122,7 @@ class TradeManagementRunner:
             db.add(
                 SystemEvent(
                     level=(
-                        SystemEventLevel.WARNING
-                        if unavailable_symbols
-                        else SystemEventLevel.INFO
+                        SystemEventLevel.WARNING if unavailable_symbols else SystemEventLevel.INFO
                     ),
                     source="trade_management_runner",
                     message=(
@@ -152,5 +154,5 @@ class TradeManagementRunner:
 
     def _is_demo_position(self, position: Position) -> bool:
         metadata = position.metadata_json or {}
-        mode = metadata.get("mode") or metadata.get("execution_mode") or "demo"
-        return str(mode).lower() == "demo"
+        mode = metadata.get("mode") or metadata.get("execution_mode") or "unknown"
+        return str(mode).lower() == "binance_demo"

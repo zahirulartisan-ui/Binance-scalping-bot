@@ -150,6 +150,17 @@ class BinanceTradingClient:
             raise BinanceClientError("Malformed open orders response")
         return [row for row in data if isinstance(row, dict)]
 
+    def get_account(self) -> dict[str, Any]:
+        data = self._request(
+            "GET",
+            "/api/v3/account",
+            params={"omitZeroBalances": "true"},
+            signed=True,
+        )
+        if not isinstance(data, dict):
+            raise BinanceClientError("Malformed account response")
+        return data
+
     def get_my_trades(
         self,
         symbol: str,

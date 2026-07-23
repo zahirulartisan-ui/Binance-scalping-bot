@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.models.enums import OrderSide, PositionStatus, SignalStatus
+from app.models.market_data import ExchangeSymbol
 from app.models.trading import AppSetting, Position, Signal
 
 
@@ -24,6 +25,20 @@ def _create_signal(db_session: Session, symbol: str = "BTCUSDT") -> Signal:
         metadata_json={"signal_grade": "A", "signal_score": 90},
     )
     db_session.add(signal)
+    db_session.add(
+        ExchangeSymbol(
+            symbol=symbol,
+            base_asset=symbol.removesuffix("USDT"),
+            quote_asset="USDT",
+            trading_status="TRADING",
+            tick_size=Decimal("0.0100000000"),
+            step_size=Decimal("0.0010000000"),
+            minimum_quantity=Decimal("0.0010000000"),
+            minimum_notional=Decimal("10.0000000000"),
+            price_precision=2,
+            quantity_precision=3,
+        )
+    )
     db_session.commit()
     db_session.refresh(signal)
     return signal
@@ -77,7 +92,7 @@ def test_execute_signal_opens_demo_position(client: TestClient, db_session: Sess
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["mode"] == "demo"
+    assert payload["mode"] == "binance_demo"
     assert payload["reused"] is False
     assert payload["risk_decision"]["status"] == "approved"
     assert payload["order"]["status"] == "filled"
@@ -98,6 +113,7 @@ def test_execute_signal_blocks_when_max_open_trades_reached(
             side=OrderSide.BUY,
             quantity=Decimal("1.00000000"),
             average_entry_price=Decimal("100.00000000"),
+            metadata_json={"mode": "binance_demo"},
         )
     )
     db_session.add(
@@ -200,7 +216,7 @@ def test_partial_close_reduces_quantity_and_keeps_position_open(
     assert payload["order"]["quantity"] == "0.50000000"
     assert payload["position"]["status"] == "open"
     assert payload["position"]["quantity"] == "1.50000000"
-    assert payload["position"]["realized_pnl"] == "3.50000000"
+    assert payload["position"]["realized_pnl"] == "4.00000000"
 
 
 def test_move_stop_updates_position_metadata_and_event(

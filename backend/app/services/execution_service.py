@@ -4,12 +4,12 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import ROUND_DOWN, Decimal
+from typing import Protocol
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.settings import Settings
-from app.models.market_data import ExchangeSymbol
 from app.models.enums import (
     JournalEntryType,
     OrderSide,
@@ -21,6 +21,7 @@ from app.models.enums import (
     SignalStatus,
     SystemEventLevel,
 )
+from app.models.market_data import ExchangeSymbol
 from app.models.trading import (
     Fill,
     Order,
@@ -53,6 +54,34 @@ class PositionNotFoundError(ExecutionError):
 
 class ExecutionConflictError(ExecutionError):
     pass
+
+
+class TradingClientProtocol(Protocol):
+    def create_order(
+        self,
+        symbol: str,
+        side: str,
+        order_type: str,
+        quantity: str,
+        client_order_id: str,
+        price: str | None = None,
+        time_in_force: str | None = None,
+    ) -> dict[str, object]: ...
+
+    def get_order(
+        self,
+        symbol: str,
+        order_id: str | None = None,
+        client_order_id: str | None = None,
+    ) -> dict[str, object]: ...
+
+    def get_my_trades(
+        self,
+        symbol: str,
+        order_id: str | None = None,
+    ) -> list[dict[str, object]]: ...
+
+    def get_account(self) -> dict[str, object]: ...
 
 
 @dataclass(frozen=True)
@@ -109,7 +138,7 @@ class ExecutionService:
     def __init__(
         self,
         settings: Settings,
-        trading_client: BinanceTradingClient | None = None,
+        trading_client: TradingClientProtocol | None = None,
     ) -> None:
         self.settings = settings
         self.trading_client = trading_client
@@ -117,21 +146,30 @@ class ExecutionService:
     def get_status(self, db: Session) -> ExecutionStatusSnapshot:
         runtime = self._runtime_settings(db)
         open_positions = self._count_open_positions(db)
-        expected_mode = "demo" if bool(runtime["demo_trading_mode"]) else "live"
+        expected_mode = "binance_demo"
         unsupported_open_positions = self._count_unsupported_open_positions(db, expected_mode)
         realized_pnl_today = self._realized_pnl_today(db)
-        daily_loss_limit_amount = (
-            runtime["demo_account_balance"] * runtime["daily_loss_limit"]
-        ).quantize(DECIMAL_EIGHT_PLACES)
         reasons: list[str] = []
         if not runtime["execution_enabled"]:
             reasons.append("execution_disabled")
         if runtime["emergency_stop"]:
             reasons.append("emergency_stop_active")
-        if not runtime["demo_trading_mode"] and (
-            self.settings.binance_api_key is None or self.settings.binance_api_secret is None
+        if (
+            self.settings.binance_demo_api_key is None
+            or self.settings.binance_demo_api_secret is None
         ):
-            reasons.append("live_credentials_missing")
+            reasons.append("demo_credentials_missing")
+
+        demo_account_balance = runtime["demo_account_balance"]
+        if runtime["execution_enabled"] and "demo_credentials_missing" not in reasons:
+            try:
+                demo_account_balance = self._demo_quote_balance()
+            except (BinanceClientError, ExecutionConflictError):
+                reasons.append("demo_account_unavailable")
+
+        daily_loss_limit_amount = (demo_account_balance * runtime["daily_loss_limit"]).quantize(
+            DECIMAL_EIGHT_PLACES
+        )
         if unsupported_open_positions > 0:
             reasons.append("unsupported_open_positions_present")
         if open_positions >= runtime["maximum_open_trades"]:
@@ -143,7 +181,7 @@ class ExecutionService:
             execution_enabled=runtime["execution_enabled"],
             demo_trading_mode=runtime["demo_trading_mode"],
             emergency_stop=runtime["emergency_stop"],
-            demo_account_balance=runtime["demo_account_balance"],
+            demo_account_balance=demo_account_balance,
             risk_per_trade=runtime["risk_per_trade"],
             daily_loss_limit=runtime["daily_loss_limit"],
             daily_loss_limit_amount=daily_loss_limit_amount,
@@ -268,9 +306,8 @@ class ExecutionService:
             raise ExecutionConflictError(decision.reason_code)
 
         runtime = self._runtime_settings(db)
-        risk_budget = (runtime["demo_account_balance"] * runtime["risk_per_trade"]).quantize(
-            DECIMAL_EIGHT_PLACES
-        )
+        demo_balance = self._demo_quote_balance()
+        risk_budget = (demo_balance * runtime["risk_per_trade"]).quantize(DECIMAL_EIGHT_PLACES)
         quantity = quantity_override or self._quantize(risk_budget / stop_distance)
         if quantity <= DECIMAL_ZERO:
             decision = self._record_risk_decision(
@@ -282,137 +319,17 @@ class ExecutionService:
             )
             raise ExecutionConflictError(decision.reason_code)
 
-        if not bool(runtime["demo_trading_mode"]):
-            return self._execute_live_signal(
-                db=db,
-                signal=signal,
-                entry_price=entry_price,
-                stop_loss=stop_loss,
-                quantity=quantity,
-                note=note,
-                risk_budget=risk_budget,
-            )
-
-        now = datetime.now(UTC)
-        position = Position(
-            symbol=signal.symbol,
-            status=PositionStatus.OPEN,
-            side=signal.side,
-            quantity=quantity,
-            average_entry_price=entry_price,
-            realized_pnl=DECIMAL_ZERO,
-            unrealized_pnl=DECIMAL_ZERO,
-            opened_at=now,
-            metadata_json={
-                "signal_id": str(signal.id),
-                "mode": "demo",
-                "stop_loss_price": str(stop_loss),
-                "initial_stop_loss_price": str(stop_loss),
-                "take_profit_price": str(signal.take_profit_price)
-                if signal.take_profit_price is not None
-                else None,
-                "initial_quantity": str(quantity),
-                "partial_take_profit_done": False,
-                "break_even_moved": False,
-                "trailing_stop_active": False,
-                "note": note,
-            },
-        )
-        db.add(position)
-        db.flush()
-
-        decision = self._record_risk_decision(
+        return self._execute_demo_signal(
             db=db,
             signal=signal,
-            status=RiskDecisionStatus.APPROVED,
-            reason_code="execution_approved",
-            metadata_json={
-                "mode": "demo",
-                "entry_price": str(entry_price),
-                "stop_loss_price": str(stop_loss),
-                "quantity": str(quantity),
-                "risk_budget": str(risk_budget),
-            },
-        )
-
-        order = Order(
-            signal_id=signal.id,
-            position_id=position.id,
-            client_order_id=f"demo-entry-{signal.id}",
-            exchange_order_id=f"demo-entry-{signal.id}",
-            symbol=signal.symbol,
-            side=OrderSide.BUY,
-            order_type=OrderType.LIMIT,
-            status=OrderStatus.FILLED,
-            price=entry_price,
+            entry_price=entry_price,
+            stop_loss=stop_loss,
             quantity=quantity,
-            filled_quantity=quantity,
-            fee=DECIMAL_ZERO,
-            submitted_at=now,
-            metadata_json={"mode": "demo", "note": note},
-        )
-        db.add(order)
-        db.flush()
-
-        fill = Fill(
-            order_id=order.id,
-            exchange_trade_id=f"demo-fill-entry-{order.id}",
-            price=entry_price,
-            quantity=quantity,
-            fee=DECIMAL_ZERO,
-            fee_asset="USDT",
-            filled_at=now,
-            metadata_json={"mode": "demo"},
-        )
-        event = PositionEvent(
-            position_id=position.id,
-            event_type=PositionEventType.OPENED,
-            quantity_delta=quantity,
-            price=entry_price,
-            realized_pnl_delta=DECIMAL_ZERO,
-            event_at=now,
-            metadata_json={"signal_id": str(signal.id), "mode": "demo"},
-        )
-        journal = TradeJournalEntry(
-            position_id=position.id,
-            symbol=position.symbol,
-            entry_type=JournalEntryType.NOTE,
-            title=f"Demo entry executed for {position.symbol}",
-            body=note or "Execution foundation opened a demo position from a promoted signal.",
-            entry_at=now,
-            metadata_json={"signal_id": str(signal.id)},
-        )
-        system_event = SystemEvent(
-            level=SystemEventLevel.INFO,
-            source="execution_service",
-            message=f"Demo execution opened position for {position.symbol}",
-            idempotency_key=f"system-entry-{signal.id}",
-            event_at=now,
-            metadata_json={
-                "signal_id": str(signal.id),
-                "position_id": str(position.id),
-                "order_id": str(order.id),
-            },
-        )
-        db.add_all([fill, event, journal, system_event])
-
-        signal.status = SignalStatus.ACCEPTED
-        signal.metadata_json = {
-            **(signal.metadata_json or {}),
-            "last_execution_at": now.isoformat(),
-            "position_id": str(position.id),
-            "execution_mode": "demo",
-        }
-        db.flush()
-        return ExecutionResult(
-            signal=signal,
-            risk_decision=decision,
-            order=order,
-            position=position,
-            reused=False,
+            note=note,
+            risk_budget=risk_budget,
         )
 
-    def _execute_live_signal(
+    def _execute_demo_signal(
         self,
         db: Session,
         signal: Signal,
@@ -475,7 +392,7 @@ class ExecutionService:
             opened_at=now,
             metadata_json={
                 "signal_id": str(signal.id),
-                "mode": "live",
+                "mode": "binance_demo",
                 "stop_loss_price": str(stop_loss),
                 "initial_stop_loss_price": str(stop_loss),
                 "take_profit_price": str(signal.take_profit_price)
@@ -496,7 +413,7 @@ class ExecutionService:
             status=RiskDecisionStatus.APPROVED,
             reason_code="execution_submitted",
             metadata_json={
-                "mode": "live",
+                "mode": "binance_demo",
                 "entry_price": str(order_price),
                 "stop_loss_price": str(stop_loss),
                 "quantity": str(order_quantity),
@@ -504,7 +421,7 @@ class ExecutionService:
             },
         )
 
-        client_order_id = f"live-entry-{signal.id.hex[:20]}"
+        client_order_id = f"demo-entry-{signal.id.hex[:20]}"
         try:
             response = self._get_trading_client().create_order(
                 symbol=signal.symbol,
@@ -527,7 +444,7 @@ class ExecutionService:
                 db=db,
                 signal=signal,
                 status=RiskDecisionStatus.BLOCKED,
-                reason_code="live_order_submission_failed",
+                reason_code="demo_order_submission_failed",
                 metadata_json={"error_type": exc.__class__.__name__},
             )
             raise ExecutionConflictError(blocked.reason_code) from exc
@@ -543,10 +460,14 @@ class ExecutionService:
             status=self._map_binance_order_status(response.get("status")),
             price=order_price,
             quantity=order_quantity,
-            filled_quantity=self._decimal_or_zero(response.get("executedQty")),
+            filled_quantity=DECIMAL_ZERO,
             fee=DECIMAL_ZERO,
             submitted_at=now,
-            metadata_json={"mode": "live", "note": note, "raw_status": response.get("status")},
+            metadata_json={
+                "mode": "binance_demo",
+                "note": note,
+                "raw_status": response.get("status"),
+            },
         )
         db.add(order)
         db.flush()
@@ -556,6 +477,11 @@ class ExecutionService:
             order=order,
             payload_fills=response.get("fills"),
         )
+        if (
+            new_fill_count == 0
+            and self._decimal_or_zero(response.get("executedQty")) > DECIMAL_ZERO
+        ):
+            new_fill_count += self._sync_order_fills_from_exchange_order(db, order)
         self._reconcile_live_position(db, position)
 
         signal.status = SignalStatus.ACCEPTED
@@ -563,14 +489,14 @@ class ExecutionService:
             **(signal.metadata_json or {}),
             "last_execution_at": now.isoformat(),
             "position_id": str(position.id),
-            "execution_mode": "live",
+            "execution_mode": "binance_demo",
         }
         db.add(
             SystemEvent(
                 level=SystemEventLevel.INFO,
                 source="execution_service",
-                message=f"Live execution submitted order for {position.symbol}",
-                idempotency_key=f"system-live-entry-{signal.id}",
+                message=f"Binance Demo execution submitted order for {position.symbol}",
+                idempotency_key=f"system-demo-entry-{signal.id}",
                 event_at=now,
                 metadata_json={
                     "signal_id": str(signal.id),
@@ -769,9 +695,8 @@ class ExecutionService:
         if self._enum_string(position.status) != PositionStatus.OPEN.value:
             return actions
 
-        if (
-            current_rr >= Decimal(str(self.settings.position_break_even_trigger_rr))
-            and not bool((position.metadata_json or {}).get("break_even_moved"))
+        if current_rr >= Decimal(str(self.settings.position_break_even_trigger_rr)) and not bool(
+            (position.metadata_json or {}).get("break_even_moved")
         ):
             event = self._update_stop(
                 db=db,
@@ -845,6 +770,16 @@ class ExecutionService:
         quantity = self._quantize(quantity)
         if quantity > position.quantity:
             raise ExecutionConflictError("exit_quantity_exceeds_position")
+        if self._is_demo_position(position):
+            return self._submit_demo_exit(
+                db=db,
+                position=position,
+                signal=signal,
+                quantity=quantity,
+                note=note,
+                action=action,
+                reason=reason,
+            )
 
         now = datetime.now(UTC)
         realized_pnl = self._quantize((exit_price - position.average_entry_price) * quantity)
@@ -931,6 +866,109 @@ class ExecutionService:
             position=position,
             order=order,
             events=[event],
+            details={"reason": reason, "note": note},
+        )
+
+    def _submit_demo_exit(
+        self,
+        db: Session,
+        position: Position,
+        signal: Signal | None,
+        quantity: Decimal,
+        note: str | None,
+        action: str,
+        reason: str,
+    ) -> PositionManagementResult:
+        pending_exit = db.scalar(
+            select(Order)
+            .where(
+                Order.position_id == position.id,
+                Order.side == OrderSide.SELL,
+                Order.status.in_(
+                    [
+                        OrderStatus.CREATED,
+                        OrderStatus.SUBMITTED,
+                        OrderStatus.ACKNOWLEDGED,
+                        OrderStatus.PARTIALLY_FILLED,
+                    ]
+                ),
+            )
+            .order_by(Order.created_at.desc())
+            .limit(1)
+        )
+        if pending_exit is not None:
+            raise ExecutionConflictError("demo_exit_order_already_pending")
+
+        now = datetime.now(UTC)
+        client_order_id = f"demo-exit-{position.id.hex[:12]}-{uuid.uuid4().hex[:8]}"
+        try:
+            response = self._get_trading_client().create_order(
+                symbol=position.symbol,
+                side=OrderSide.SELL.value,
+                order_type=OrderType.MARKET.value,
+                quantity=self._format_decimal(quantity),
+                client_order_id=client_order_id,
+            )
+        except BinanceClientError as exc:
+            raise ExecutionConflictError("demo_exit_submission_failed") from exc
+
+        order = Order(
+            signal_id=signal.id if signal is not None else None,
+            position_id=position.id,
+            client_order_id=str(response.get("clientOrderId") or client_order_id),
+            exchange_order_id=str(response.get("orderId")) if response.get("orderId") else None,
+            symbol=position.symbol,
+            side=OrderSide.SELL,
+            order_type=OrderType.MARKET,
+            status=self._map_binance_order_status(response.get("status")),
+            price=self._decimal_or_zero(response.get("cummulativeQuoteQty")) / quantity
+            if quantity > DECIMAL_ZERO
+            and self._decimal_or_zero(response.get("cummulativeQuoteQty")) > DECIMAL_ZERO
+            else None,
+            quantity=quantity,
+            filled_quantity=DECIMAL_ZERO,
+            fee=DECIMAL_ZERO,
+            submitted_at=now,
+            metadata_json={
+                "mode": "binance_demo",
+                "note": note,
+                "reason": reason,
+                "raw_status": response.get("status"),
+            },
+        )
+        db.add(order)
+        db.flush()
+        new_fill_count = self._sync_order_fills_from_exchange_payload(
+            db,
+            order,
+            response.get("fills"),
+        )
+        if (
+            new_fill_count == 0
+            and self._decimal_or_zero(response.get("executedQty")) > DECIMAL_ZERO
+        ):
+            self._sync_order_fills_from_exchange_order(db, order)
+        self._reconcile_live_position(db, position)
+        db.add(
+            SystemEvent(
+                level=SystemEventLevel.INFO,
+                source="execution_service",
+                message=f"Binance Demo {action} submitted for {position.symbol}",
+                idempotency_key=f"system-demo-{action}-{order.id}",
+                event_at=now,
+                metadata_json={
+                    "position_id": str(position.id),
+                    "order_id": str(order.id),
+                    "reason": reason,
+                },
+            )
+        )
+        db.flush()
+        return PositionManagementResult(
+            action=action,
+            position=position,
+            order=order,
+            events=[],
             details={"reason": reason, "note": note},
         )
 
@@ -1037,13 +1075,16 @@ class ExecutionService:
             row
             for row in db.scalars(select(Order).order_by(Order.created_at.desc()).limit(limit))
             if self._is_live_order(row)
-            and self._enum_string(row.status)
-            in {
-                OrderStatus.CREATED.value,
-                OrderStatus.SUBMITTED.value,
-                OrderStatus.ACKNOWLEDGED.value,
-                OrderStatus.PARTIALLY_FILLED.value,
-            }
+            and (
+                self._enum_string(row.status)
+                in {
+                    OrderStatus.CREATED.value,
+                    OrderStatus.SUBMITTED.value,
+                    OrderStatus.ACKNOWLEDGED.value,
+                    OrderStatus.PARTIALLY_FILLED.value,
+                }
+                or row.filled_quantity < row.quantity
+            )
         ]
         if not live_orders:
             return OrderSyncResult(
@@ -1128,9 +1169,7 @@ class ExecutionService:
         }
 
     def _count_open_positions(self, db: Session) -> int:
-        return len(
-            list(db.scalars(select(Position).where(Position.status == PositionStatus.OPEN)))
-        )
+        return len(list(db.scalars(select(Position).where(Position.status == PositionStatus.OPEN))))
 
     def _count_unsupported_open_positions(self, db: Session, expected_mode: str) -> int:
         return sum(
@@ -1226,15 +1265,11 @@ class ExecutionService:
         changed = False
         exchange_order_id = payload.get("orderId")
         mapped_status = self._map_binance_order_status(payload.get("status"))
-        executed_quantity = self._decimal_or_zero(payload.get("executedQty"))
         if exchange_order_id is not None and str(exchange_order_id) != order.exchange_order_id:
             order.exchange_order_id = str(exchange_order_id)
             changed = True
         if order.status != mapped_status:
             order.status = mapped_status
-            changed = True
-        if order.filled_quantity != executed_quantity:
-            order.filled_quantity = executed_quantity
             changed = True
         payload_price = payload.get("price")
         if payload_price not in {None, "", "0.00000000"}:
@@ -1273,6 +1308,22 @@ class ExecutionService:
             )
         return self._sync_order_fills_from_exchange_trades(db, order, trade_rows)
 
+    def _sync_order_fills_from_exchange_order(self, db: Session, order: Order) -> int:
+        if not order.exchange_order_id:
+            return 0
+        try:
+            trades = self._get_trading_client().get_my_trades(
+                symbol=order.symbol,
+                order_id=order.exchange_order_id,
+            )
+        except BinanceClientError:
+            order.metadata_json = {
+                **(order.metadata_json or {}),
+                "fill_import_pending": True,
+            }
+            return 0
+        return self._sync_order_fills_from_exchange_trades(db, order, trades)
+
     def _sync_order_fills_from_exchange_trades(
         self,
         db: Session,
@@ -1298,7 +1349,7 @@ class ExecutionService:
                 fee=fee,
                 fee_asset=str(trade.get("commissionAsset") or "USDT"),
                 filled_at=filled_at,
-                metadata_json={"mode": "live"},
+                metadata_json={"mode": "binance_demo"},
             )
             db.add(fill)
             order.filled_quantity = self._quantize(order.filled_quantity + quantity)
@@ -1324,7 +1375,7 @@ class ExecutionService:
                         realized_pnl_delta=DECIMAL_ZERO,
                         event_at=filled_at,
                         metadata_json={
-                            "reason": "live_order_sync",
+                            "reason": "binance_demo_order_sync",
                             "exchange_trade_id": exchange_trade_id,
                             "order_id": str(order.id),
                         },
@@ -1337,7 +1388,11 @@ class ExecutionService:
 
     def _reconcile_live_position(self, db: Session, position: Position) -> None:
         orders = list(
-            db.scalars(select(Order).where(Order.position_id == position.id).order_by(Order.created_at.asc()))
+            db.scalars(
+                select(Order)
+                .where(Order.position_id == position.id)
+                .order_by(Order.created_at.asc())
+            )
         )
         fills = list(
             db.scalars(
@@ -1348,19 +1403,17 @@ class ExecutionService:
             )
         )
         buy_fills = [
-            fill
-            for fill in fills
-            if self._enum_string(fill.order.side) == OrderSide.BUY.value
+            fill for fill in fills if self._enum_string(fill.order.side) == OrderSide.BUY.value
         ]
         sell_fills = [
-            fill
-            for fill in fills
-            if self._enum_string(fill.order.side) == OrderSide.SELL.value
+            fill for fill in fills if self._enum_string(fill.order.side) == OrderSide.SELL.value
         ]
         total_buy_quantity = sum((fill.quantity for fill in buy_fills), DECIMAL_ZERO)
         total_sell_quantity = sum((fill.quantity for fill in sell_fills), DECIMAL_ZERO)
         if total_buy_quantity > DECIMAL_ZERO:
-            total_buy_notional = sum((fill.price * fill.quantity for fill in buy_fills), DECIMAL_ZERO)
+            total_buy_notional = sum(
+                (fill.price * fill.quantity for fill in buy_fills), DECIMAL_ZERO
+            )
             position.average_entry_price = self._quantize(total_buy_notional / total_buy_quantity)
         net_quantity = self._quantize(total_buy_quantity - total_sell_quantity)
         position.quantity = max(net_quantity, DECIMAL_ZERO)
@@ -1393,21 +1446,26 @@ class ExecutionService:
                 }
             elif total_sell_quantity > DECIMAL_ZERO:
                 position.status = PositionStatus.CLOSED
-                position.closed_at = max((fill.filled_at for fill in sell_fills), default=datetime.now(UTC))
+                position.closed_at = max(
+                    (fill.filled_at for fill in sell_fills), default=datetime.now(UTC)
+                )
             else:
                 position.status = PositionStatus.OPEN
         else:
             position.status = PositionStatus.OPEN
             position.closed_at = None
 
-    def _get_trading_client(self) -> BinanceTradingClient:
+    def _get_trading_client(self) -> TradingClientProtocol:
         if self.trading_client is not None:
             return self.trading_client
-        if self.settings.binance_api_key is None or self.settings.binance_api_secret is None:
-            raise ExecutionConflictError("live_credentials_missing")
+        if (
+            self.settings.binance_demo_api_key is None
+            or self.settings.binance_demo_api_secret is None
+        ):
+            raise ExecutionConflictError("demo_credentials_missing")
         self.trading_client = BinanceTradingClient(
-            api_key=self.settings.binance_api_key.get_secret_value(),
-            api_secret=self.settings.binance_api_secret.get_secret_value(),
+            api_key=self.settings.binance_demo_api_key.get_secret_value(),
+            api_secret=self.settings.binance_demo_api_secret.get_secret_value(),
             base_url=self.settings.binance_trading_base_url,
             timeout_seconds=self.settings.binance_trading_timeout_seconds,
             max_retries=self.settings.binance_trading_max_retries,
@@ -1416,16 +1474,28 @@ class ExecutionService:
         return self.trading_client
 
     def _is_demo_position(self, position: Position) -> bool:
-        return self._position_mode(position) == "demo"
+        return self._position_mode(position) == "binance_demo"
 
     def _position_mode(self, position: Position) -> str:
         metadata = position.metadata_json or {}
-        mode = metadata.get("mode") or metadata.get("execution_mode") or "demo"
+        mode = metadata.get("mode") or metadata.get("execution_mode") or "unknown"
         return str(mode).lower()
 
     def _is_live_order(self, order: Order) -> bool:
         metadata = order.metadata_json or {}
-        return str(metadata.get("mode") or "").lower() == "live"
+        return str(metadata.get("mode") or "").lower() == "binance_demo"
+
+    def _demo_quote_balance(self) -> Decimal:
+        payload = self._get_trading_client().get_account()
+        balances = payload.get("balances")
+        if not isinstance(balances, list):
+            raise ExecutionConflictError("demo_account_balance_unavailable")
+        for row in balances:
+            if isinstance(row, dict) and str(row.get("asset") or "").upper() == "USDT":
+                balance = self._decimal_or_zero(row.get("free"))
+                if balance > DECIMAL_ZERO:
+                    return balance
+        raise ExecutionConflictError("demo_usdt_balance_unavailable")
 
     def _assert_demo_position(self, position: Position) -> None:
         if not self._is_demo_position(position):

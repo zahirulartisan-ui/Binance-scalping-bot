@@ -23,6 +23,33 @@ class FakeClient:
         self.calls.append(symbol)
         return {"price": self.price}
 
+    def create_order(
+        self,
+        symbol: str,
+        side: str,
+        order_type: str,
+        quantity: str,
+        client_order_id: str,
+        price: str | None = None,
+        time_in_force: str | None = None,
+    ) -> dict[str, object]:
+        return {
+            "orderId": "demo-exit-1",
+            "clientOrderId": client_order_id,
+            "status": "FILLED",
+            "executedQty": quantity,
+            "cummulativeQuoteQty": str(Decimal(quantity) * Decimal(self.price)),
+            "fills": [
+                {
+                    "tradeId": "demo-exit-fill-1",
+                    "price": self.price,
+                    "qty": quantity,
+                    "commission": "0",
+                    "commissionAsset": "USDT",
+                }
+            ],
+        }
+
 
 def _demo_position() -> Position:
     return Position(
@@ -32,7 +59,7 @@ def _demo_position() -> Position:
         quantity=Decimal("1.00000000"),
         average_entry_price=Decimal("100.00000000"),
         metadata_json={
-            "mode": "demo",
+            "mode": "binance_demo",
             "signal_id": "demo-signal",
             "stop_loss_price": "95.00000000",
             "initial_stop_loss_price": "95.00000000",
@@ -65,6 +92,7 @@ def test_trade_management_runner_uses_fresh_snapshot_prices(db_session: Session)
         Settings(app_env="test", database_url="sqlite+pysqlite:///:memory:"),
         lambda: db_session,
         client,  # type: ignore[arg-type]
+        client,  # type: ignore[arg-type]
     )
 
     assert runner.run_once() is True
@@ -96,6 +124,7 @@ def test_trade_management_runner_falls_back_to_live_quote_when_snapshot_is_stale
     runner = TradeManagementRunner(
         Settings(app_env="test", database_url="sqlite+pysqlite:///:memory:"),
         lambda: db_session,
+        client,  # type: ignore[arg-type]
         client,  # type: ignore[arg-type]
     )
 

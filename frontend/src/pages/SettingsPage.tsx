@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "../api/client";
+import { apiClient, getExecutionApiToken, setExecutionApiToken } from "../api/client";
 import { LogLevel, RuntimeSettingsPatch, RuntimeSettings } from "../api/types";
 import { useToast } from "../context/ToastContext";
 import { useTabVisibility } from "../hooks/useTabVisibility";
@@ -59,6 +59,9 @@ export const SettingsPage: React.FC = () => {
   const [maximumOpenTrades, setMaximumOpenTrades] = useState<number>(5);
   const [dailyLossLimit, setDailyLossLimit] = useState<number>(0.05);
   const [emergencyStop, setEmergencyStop] = useState<boolean>(false);
+  const [executionApiTokenInput, setExecutionApiTokenInput] = useState<string>(() =>
+    getExecutionApiToken()
+  );
 
   // Form input validation state (for fields with min/max, tracking error messages)
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
@@ -260,7 +263,7 @@ export const SettingsPage: React.FC = () => {
     const finalExecutionEnabled = patch.execution_enabled !== undefined ? patch.execution_enabled : executionEnabled;
 
     if (finalExecutionEnabled && !isDemoModeOn) {
-      warnings.push("CRITICAL: You are running execution in LIVE (Real Capital) mode. Ensure Binance API credentials have restricted ip white-lists.");
+      warnings.push("CRITICAL: Execution is locked to Binance Spot Demo. Keep Demo Trading Mode enabled.");
     }
 
     // Require confirmation before changing execution or emergency stop
@@ -466,7 +469,7 @@ export const SettingsPage: React.FC = () => {
                 <div>
                   <div className="font-bold text-slate-300 text-sm">Demo Trading Mode</div>
                   <div className="text-[10px] text-slate-500 mt-1">
-                    Simulate order entries and fills without dispatching real risk capital.
+                    Dispatches orders to Binance Spot Demo only; real-capital live dispatch is blocked.
                   </div>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
@@ -612,6 +615,26 @@ export const SettingsPage: React.FC = () => {
                   disabled
                   className="w-full bg-slate-900/40 border border-slate-800 rounded-lg p-2 text-slate-500 font-semibold cursor-not-allowed"
                 />
+              </div>
+
+              {/* Session-only execution token */}
+              <div className="space-y-2 bg-slate-950 p-4 rounded-lg border border-slate-800 md:col-span-2">
+                <label className="block text-slate-300 font-bold text-xs">
+                  Execution API Token (Browser Session Only):
+                </label>
+                <input
+                  type="password"
+                  value={executionApiTokenInput}
+                  placeholder="Paste EXECUTION_API_TOKEN before changing protected settings"
+                  onChange={(e) => {
+                    setExecutionApiTokenInput(e.target.value);
+                    setExecutionApiToken(e.target.value);
+                  }}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-400"
+                />
+                <p className="text-[10px] text-slate-500 leading-relaxed">
+                  Required for protected PATCH requests in deployed environments. Stored only in this browser session and sent as X-Execution-Token.
+                </p>
               </div>
             </div>
           </section>

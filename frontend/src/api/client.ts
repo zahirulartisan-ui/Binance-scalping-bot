@@ -41,6 +41,32 @@ export const getApiBaseUrl = (): string => {
   return url.replace(/\/+$/, "");
 };
 
+const EXECUTION_API_TOKEN_STORAGE_KEY = "binance_scalping_bot_execution_api_token";
+
+export const getExecutionApiToken = (): string => {
+  if (typeof window === "undefined") return "";
+  return window.sessionStorage.getItem(EXECUTION_API_TOKEN_STORAGE_KEY) || "";
+};
+
+export const setExecutionApiToken = (token: string): void => {
+  if (typeof window === "undefined") return;
+  const trimmed = token.trim();
+  if (trimmed) {
+    window.sessionStorage.setItem(EXECUTION_API_TOKEN_STORAGE_KEY, trimmed);
+  } else {
+    window.sessionStorage.removeItem(EXECUTION_API_TOKEN_STORAGE_KEY);
+  }
+};
+
+const buildJsonMutationHeaders = (): HeadersInit => {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const token = getExecutionApiToken();
+  if (token) {
+    headers["X-Execution-Token"] = token;
+  }
+  return headers;
+};
+
 /**
  * Parses and handles the FastAPI standard errors.
  */
@@ -172,7 +198,7 @@ export const apiClient = {
     const baseUrl = getApiBaseUrl();
     const res = await fetch(`${baseUrl}/api/v1/settings`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: buildJsonMutationHeaders(),
       body: JSON.stringify(patch),
     });
     return await handleResponse<RuntimeSettings>(res);

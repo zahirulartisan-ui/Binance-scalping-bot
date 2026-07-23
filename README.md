@@ -116,10 +116,12 @@ Backend `.env.example`:
 | `LOG_LEVEL` | Structured logging level. |
 | `DATABASE_URL` | PostgreSQL SQLAlchemy URL. |
 | `ALLOWED_ORIGINS` | Comma-separated CORS origins. |
-| `BINANCE_DEMO_API_KEY` | Binance Demo API key from environment only. |
-| `BINANCE_DEMO_API_SECRET` | Binance Demo API secret from environment only. |
+| `BINANCE_DEMO_API_KEY` | Binance Spot Demo API key from environment only. |
+| `BINANCE_DEMO_API_SECRET` | Binance Spot Demo API secret from environment only. |
+| `BINANCE_TRADING_BASE_URL` | Locked to the official Spot Demo host: `https://demo-api.binance.com`. |
+| `EXECUTION_API_TOKEN` | Required in production for all execution-changing API requests. |
 | `EXECUTION_ENABLED` | Live execution guard, default `false`. |
-| `DEMO_TRADING_MODE` | Demo trading mode flag, default `true`. |
+| `DEMO_TRADING_MODE` | Must remain `true`; Phase 1 rejects non-demo execution. |
 | `SCANNER_INTERVAL_SECONDS` | Scanner interval setting placeholder. No scanner logic exists yet. |
 | `RISK_PER_TRADE` | Risk per trade setting placeholder. No risk engine exists yet. |
 | `MAXIMUM_OPEN_TRADES` | Maximum open trades setting placeholder. |

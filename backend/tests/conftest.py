@@ -13,6 +13,44 @@ from app.core.settings import get_settings
 from app.database.base import Base
 from app.database.session import get_db
 from app.main import create_app
+from app.services.execution_service import ExecutionService
+
+
+class FakeDemoTradingClient:
+    def __init__(self) -> None:
+        self._order_number = 0
+
+    def get_account(self) -> dict[str, object]:
+        return {"balances": [{"asset": "USDT", "free": "1000.00000000", "locked": "0.00000000"}]}
+
+    def create_order(
+        self,
+        symbol: str,
+        side: str,
+        order_type: str,
+        quantity: str,
+        client_order_id: str,
+        price: str | None = None,
+        time_in_force: str | None = None,
+    ) -> dict[str, object]:
+        self._order_number += 1
+        fill_price = price or "108.00000000"
+        return {
+            "orderId": str(self._order_number),
+            "clientOrderId": client_order_id,
+            "status": "FILLED",
+            "executedQty": quantity,
+            "cummulativeQuoteQty": str(float(quantity) * float(fill_price)),
+            "fills": [
+                {
+                    "tradeId": f"trade-{self._order_number}",
+                    "price": fill_price,
+                    "qty": quantity,
+                    "commission": "0",
+                    "commissionAsset": "USDT",
+                }
+            ],
+        }
 
 
 @pytest.fixture
@@ -50,6 +88,14 @@ def client(
 ) -> Generator[TestClient, None, None]:
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("DATABASE_URL", "sqlite+pysqlite:///:memory:")
+    monkeypatch.setenv("BINANCE_DEMO_API_KEY", "demo-key")
+    monkeypatch.setenv("BINANCE_DEMO_API_SECRET", "demo-secret")
+    fake_trading_client = FakeDemoTradingClient()
+    monkeypatch.setattr(
+        ExecutionService,
+        "_get_trading_client",
+        lambda self: fake_trading_client,
+    )
     get_settings.cache_clear()
     app = create_app()
 

@@ -66,11 +66,30 @@ def test_settings_accepts_comma_separated_and_json_list_env_values() -> None:
     assert json_settings.market_data_symbols == ["BTCUSDT", "ETHUSDT"]
 
 
-def test_live_execution_requires_real_credentials() -> None:
+def test_execution_rejects_non_demo_mode() -> None:
     with pytest.raises(ValidationError):
         Settings(
             app_env=AppEnvironment.TEST,
             database_url="sqlite+pysqlite:///:memory:",
             execution_enabled=True,
             demo_trading_mode=False,
+        )
+
+
+def test_demo_execution_requires_demo_credentials() -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            app_env=AppEnvironment.TEST,
+            database_url="sqlite+pysqlite:///:memory:",
+            execution_enabled=True,
+            demo_trading_mode=True,
+        )
+
+
+def test_trading_url_rejects_non_demo_host() -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            app_env=AppEnvironment.TEST,
+            database_url="sqlite+pysqlite:///:memory:",
+            binance_trading_base_url="https://api.binance.com",
         )

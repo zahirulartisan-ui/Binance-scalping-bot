@@ -81,6 +81,9 @@ class FakeTradingClient:
     ) -> list[dict[str, object]]:
         return [dict(row) for row in self.trade_payload]
 
+    def get_account(self) -> dict[str, object]:
+        return {"balances": [{"asset": "USDT", "free": "1000.00000000", "locked": "0.00000000"}]}
+
 
 def _create_signal(db_session: Session) -> Signal:
     signal = Signal(
@@ -115,35 +118,35 @@ def _create_signal(db_session: Session) -> Signal:
     return signal
 
 
-def _live_settings() -> Settings:
+def _demo_settings() -> Settings:
     return Settings(
         app_env="test",
         database_url="sqlite+pysqlite:///:memory:",
         execution_enabled=True,
-        demo_trading_mode=False,
-        binance_api_key="live-key",
-        binance_api_secret="live-secret",
+        demo_trading_mode=True,
+        binance_demo_api_key="demo-key",
+        binance_demo_api_secret="demo-secret",
     )
 
 
-def test_live_execute_signal_submits_exchange_order(db_session: Session) -> None:
+def test_demo_execute_signal_submits_exchange_order(db_session: Session) -> None:
     signal = _create_signal(db_session)
     client = FakeTradingClient()
-    service = ExecutionService(_live_settings(), trading_client=client)
+    service = ExecutionService(_demo_settings(), trading_client=client)
 
     result = service.execute_signal(db_session, signal.id)
 
     assert result.order.status == OrderStatus.ACKNOWLEDGED
-    assert result.order.metadata_json["mode"] == "live"
-    assert result.position.metadata_json["mode"] == "live"
+    assert result.order.metadata_json["mode"] == "binance_demo"
+    assert result.position.metadata_json["mode"] == "binance_demo"
     assert result.position.quantity == Decimal("0")
     assert client.created_orders[0]["symbol"] == "BTCUSDT"
 
 
-def test_sync_live_orders_imports_fills_and_updates_position(db_session: Session) -> None:
+def test_sync_demo_orders_imports_fills_and_updates_position(db_session: Session) -> None:
     signal = _create_signal(db_session)
     client = FakeTradingClient()
-    service = ExecutionService(_live_settings(), trading_client=client)
+    service = ExecutionService(_demo_settings(), trading_client=client)
     service.execute_signal(db_session, signal.id)
 
     result = service.sync_live_orders(db_session)
@@ -159,7 +162,7 @@ def test_sync_live_orders_imports_fills_and_updates_position(db_session: Session
     assert fill is not None
 
 
-def test_sync_live_orders_closes_unfilled_canceled_entry(db_session: Session) -> None:
+def test_sync_demo_orders_closes_unfilled_canceled_entry(db_session: Session) -> None:
     signal = _create_signal(db_session)
     client = FakeTradingClient()
     client.order_payload = {
@@ -169,7 +172,7 @@ def test_sync_live_orders_closes_unfilled_canceled_entry(db_session: Session) ->
         "price": "100.00000000",
     }
     client.trade_payload = []
-    service = ExecutionService(_live_settings(), trading_client=client)
+    service = ExecutionService(_demo_settings(), trading_client=client)
     service.execute_signal(db_session, signal.id)
 
     result = service.sync_live_orders(db_session)

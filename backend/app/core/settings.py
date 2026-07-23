@@ -4,6 +4,7 @@ import json
 from enum import StrEnum
 from functools import lru_cache
 from typing import Any
+from urllib.parse import urlparse
 
 from pydantic import Field, SecretStr, field_serializer, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -45,6 +46,7 @@ class Settings(BaseSettings):
     binance_demo_api_secret: SecretStr | None = None
     binance_api_key: SecretStr | None = None
     binance_api_secret: SecretStr | None = None
+    execution_api_token: SecretStr | None = None
     execution_enabled: bool = False
     demo_trading_mode: bool = True
     demo_account_balance: float = Field(default=1000.0, gt=0, le=1000000000)
@@ -55,7 +57,7 @@ class Settings(BaseSettings):
     maximum_open_trades: int = Field(default=3, ge=0, le=50)
     daily_loss_limit: float = Field(default=0.03, gt=0, le=0.5)
     emergency_stop: bool = False
-    binance_trading_base_url: str = "https://api.binance.com"
+    binance_trading_base_url: str = "https://demo-api.binance.com"
     binance_trading_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
     binance_trading_max_retries: int = Field(default=2, ge=0, le=5)
     binance_trading_backoff_seconds: float = Field(default=0.25, ge=0, le=5)
@@ -181,17 +183,26 @@ class Settings(BaseSettings):
             raise ValueError("DATABASE_URL must be a PostgreSQL SQLAlchemy URL outside test mode")
 
         if self.app_env is AppEnvironment.PRODUCTION:
-            if self.execution_enabled:
-                raise ValueError("execution must remain disabled in production for V1")
-            if self.demo_trading_mode:
-                raise ValueError("production mode cannot run with DEMO_TRADING_MODE enabled")
             if any(origin == "*" for origin in self.allowed_origins):
                 raise ValueError("production mode cannot allow wildcard CORS origins")
             if "localhost" in self.database_url or "127.0.0.1" in self.database_url:
                 raise ValueError("production mode cannot use a local database URL")
-        if self.execution_enabled and not self.demo_trading_mode:
-            if self.binance_api_key is None or self.binance_api_secret is None:
-                raise ValueError("live execution requires BINANCE_API_KEY and BINANCE_API_SECRET")
+            if self.execution_api_token is None:
+                raise ValueError("production requires EXECUTION_API_TOKEN")
+        if not self.demo_trading_mode:
+            raise ValueError("Phase 1 supports Binance Spot Demo mode only")
+        trading_host = (urlparse(self.binance_trading_base_url).hostname or "").lower()
+        if trading_host != "demo-api.binance.com":
+            raise ValueError(
+                "BINANCE_TRADING_BASE_URL must use the official Binance Spot Demo host"
+            )
+        if self.execution_enabled and (
+            self.binance_demo_api_key is None or self.binance_demo_api_secret is None
+        ):
+            raise ValueError(
+                "Binance Spot Demo execution requires BINANCE_DEMO_API_KEY "
+                "and BINANCE_DEMO_API_SECRET"
+            )
         if self.strategy_entry_timeframe != "1m":
             raise ValueError("trend pullback strategy entry timeframe must be 1m")
         if self.strategy_confirmation_timeframe != "5m":
@@ -219,6 +230,7 @@ class Settings(BaseSettings):
         "binance_demo_api_secret",
         "binance_api_key",
         "binance_api_secret",
+        "execution_api_token",
     )
     def serialize_secret(self, value: SecretStr | None) -> str | None:
         if value is None:
@@ -249,7 +261,9 @@ class Settings(BaseSettings):
             "emergency_stop": self.emergency_stop,
             "position_monitoring_enabled": self.position_monitoring_enabled,
             "position_monitoring_interval_seconds": self.position_monitoring_interval_seconds,
-            "position_monitoring_price_max_age_seconds": self.position_monitoring_price_max_age_seconds,
+            "position_monitoring_price_max_age_seconds": (
+                self.position_monitoring_price_max_age_seconds
+            ),
             "market_data_collection_enabled": self.market_data_collection_enabled,
             "market_data_symbol_refresh_seconds": self.market_data_symbol_refresh_seconds,
             "market_data_cycle_interval_seconds": self.market_data_cycle_interval_seconds,

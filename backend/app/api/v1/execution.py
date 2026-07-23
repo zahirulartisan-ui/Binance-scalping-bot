@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import secrets
 import uuid
 from enum import StrEnum
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.core.settings import Settings, get_settings
@@ -30,11 +31,31 @@ from app.schemas.execution import (
 from app.services.execution_service import (
     ExecutionConflictError,
     ExecutionService,
+    PositionManagementResult,
     PositionNotFoundError,
     SignalExecutionNotFoundError,
 )
 
-router = APIRouter(prefix="/api/v1/execution", tags=["execution"])
+
+def verify_execution_access(
+    request: Request,
+    settings: Annotated[Settings, Depends(get_settings)],
+    x_execution_token: Annotated[str | None, Header()] = None,
+) -> None:
+    if request.method == "GET" or settings.app_env.value == "test":
+        return
+    configured = settings.execution_api_token
+    if configured is None or x_execution_token is None:
+        raise HTTPException(status_code=401, detail="execution authentication required")
+    if not secrets.compare_digest(configured.get_secret_value(), x_execution_token):
+        raise HTTPException(status_code=403, detail="invalid execution token")
+
+
+router = APIRouter(
+    prefix="/api/v1/execution",
+    tags=["execution"],
+    dependencies=[Depends(verify_execution_access)],
+)
 
 
 def _enum_value(value: object) -> str:
@@ -112,7 +133,7 @@ def _position_event_response(row: PositionEvent) -> PositionEventResponse:
     )
 
 
-def _position_management_response(result: object) -> PositionManagementResponse:
+def _position_management_response(result: PositionManagementResult) -> PositionManagementResponse:
     return PositionManagementResponse(
         action=result.action,
         position=_position_response(result.position),
@@ -129,7 +150,11 @@ def _execution_response(
     position: Position,
     reused: bool,
 ) -> SignalExecutionResponse:
-    mode = (order.metadata_json or {}).get("mode") or (position.metadata_json or {}).get("mode") or "demo"
+    mode = (
+        (order.metadata_json or {}).get("mode")
+        or (position.metadata_json or {}).get("mode")
+        or "demo"
+    )
     return SignalExecutionResponse(
         signal_id=str(signal.id),
         reused=reused,
