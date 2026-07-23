@@ -5,7 +5,7 @@ import httpx
 from app.services.binance_client import BinanceClientError, BinanceMarketDataClient
 
 
-def verify():
+def verify() -> bool:
     # We use the official Futures Demo URL
     base_url = "https://demo-fapi.binance.com"
     print(f"Connecting to Binance Futures Demo REST endpoint: {base_url}")
