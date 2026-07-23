@@ -33,7 +33,7 @@ export const TopBar: React.FC<{ onMenuClick?: () => void }> = ({ onMenuClick }) 
   const isEmergencyStopActive =
     health?.emergency_stop?.status === "active" || settings?.emergency_stop === true;
 
-  const appEnv = health?.environment?.status || settings?.app_env || "development";
+  const appEnv = health?.environment?.status || "";
 
   const isHealthOk = health?.application?.status === "ok";
 
@@ -73,11 +73,13 @@ export const TopBar: React.FC<{ onMenuClick?: () => void }> = ({ onMenuClick }) 
         </div>
 
         {/* Environment Badge */}
-        <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900/80 border border-slate-800 text-xs font-mono">
-          <Server className="w-3.5 h-3.5 text-sky-400" />
-          <span className="text-slate-400">ENV:</span>
-          <span className="text-sky-300 font-semibold uppercase">{appEnv}</span>
-        </div>
+        {appEnv && (
+          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900/80 border border-slate-800 text-xs font-mono">
+            <Server className="w-3.5 h-3.5 text-sky-400" />
+            <span className="text-slate-400">ENV:</span>
+            <span className="text-sky-300 font-semibold uppercase">{appEnv}</span>
+          </div>
+        )}
 
         {/* Emergency Stop Badge */}
         {isEmergencyStopActive ? (
@@ -86,9 +88,27 @@ export const TopBar: React.FC<{ onMenuClick?: () => void }> = ({ onMenuClick }) 
             <span>EMERGENCY STOP ACTIVE</span>
           </div>
         ) : (
-          <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-emerald-400 text-xs font-mono">
-            <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
-            <span>SYSTEM ACTIVE</span>
+          health?.execution?.status !== "disabled" && (
+            <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-emerald-400 text-xs font-mono">
+              <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
+              <span>SYSTEM ACTIVE</span>
+            </div>
+          )
+        )}
+
+        {/* Execution Off Badge */}
+        {health?.execution?.status === "disabled" && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-950/40 border border-rose-500/30 text-rose-400 text-xs font-mono">
+            <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+            <span>EXECUTION OFF</span>
+          </div>
+        )}
+
+        {/* Demo Off Badge */}
+        {health?.demo_trading?.status === "disabled" && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-950/40 border border-amber-500/30 text-amber-400 text-xs font-mono">
+            <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+            <span>DEMO OFF</span>
           </div>
         )}
       </div>

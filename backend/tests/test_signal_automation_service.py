@@ -34,7 +34,9 @@ class FakeSignalsService:
     def __init__(self, signals: list[Signal]) -> None:
         self.signals = signals
 
-    def promote_from_run(self, db: Session, run: FakeScannerRun, limit: int = 100) -> SimpleNamespace:
+    def promote_from_run(
+        self, db: Session, run: FakeScannerRun, limit: int = 100
+    ) -> SimpleNamespace:
         return SimpleNamespace(
             promoted_count=len(self.signals),
             reused_count=0,
@@ -43,7 +45,11 @@ class FakeSignalsService:
 
 
 class FakeExecutionService:
-    def __init__(self, reused_ids: set[uuid.UUID] | None = None, blocked_ids: set[uuid.UUID] | None = None) -> None:
+    def __init__(
+        self,
+        reused_ids: set[uuid.UUID] | None = None,
+        blocked_ids: set[uuid.UUID] | None = None,
+    ) -> None:
         self.reused_ids = reused_ids or set()
         self.blocked_ids = blocked_ids or set()
         self.calls: list[uuid.UUID] = []
@@ -78,7 +84,11 @@ def _settings() -> Settings:
     return Settings(app_env="test", database_url="sqlite+pysqlite:///:memory:")
 
 
-def _create_signal(db_session: Session, symbol: str = "BTCUSDT", status: SignalStatus = SignalStatus.NEW) -> Signal:
+def _create_signal(
+    db_session: Session,
+    symbol: str = "BTCUSDT",
+    status: SignalStatus = SignalStatus.NEW,
+) -> Signal:
     signal = Signal(
         symbol=symbol,
         status=status,
@@ -99,9 +109,9 @@ def _create_signal(db_session: Session, symbol: str = "BTCUSDT", status: SignalS
 def test_signal_automation_service_respects_runtime_disable_flag(db_session: Session) -> None:
     service = SignalAutomationService(
         _settings(),
-        scanner_service=FakeScannerService(),
-        signals_service=FakeSignalsService([]),
-        execution_service=FakeExecutionService(),
+        scanner_service=FakeScannerService(),  # type: ignore[arg-type]
+        signals_service=FakeSignalsService([]),  # type: ignore[arg-type]
+        execution_service=FakeExecutionService(),  # type: ignore[arg-type]
     )
 
     result = service.run_cycle(db_session)
@@ -135,9 +145,9 @@ def test_signal_automation_service_scans_promotes_and_executes(db_session: Sessi
     execution = FakeExecutionService(reused_ids={second.id})
     service = SignalAutomationService(
         _settings(),
-        scanner_service=scanner,
-        signals_service=FakeSignalsService([first, second]),
-        execution_service=execution,
+        scanner_service=scanner,  # type: ignore[arg-type]
+        signals_service=FakeSignalsService([first, second]),  # type: ignore[arg-type]
+        execution_service=execution,  # type: ignore[arg-type]
     )
 
     result = service.run_cycle(db_session)
@@ -149,7 +159,9 @@ def test_signal_automation_service_scans_promotes_and_executes(db_session: Sessi
     assert result.reused_execution_count == 1
     assert result.blocked_count == 0
     assert execution.calls == [first.id, second.id]
-    event = db_session.scalars(select(SystemEvent).where(SystemEvent.source == "signal_automation_service")).first()
+    event = db_session.scalars(
+        select(SystemEvent).where(SystemEvent.source == "signal_automation_service")
+    ).first()
     assert event is not None
     assert event.metadata_json["executed_count"] == 1
 
@@ -168,9 +180,9 @@ def test_signal_automation_service_tracks_blocked_execution(db_session: Session)
     execution = FakeExecutionService(blocked_ids={signal.id})
     service = SignalAutomationService(
         _settings(),
-        scanner_service=FakeScannerService(),
-        signals_service=FakeSignalsService([signal]),
-        execution_service=execution,
+        scanner_service=FakeScannerService(),  # type: ignore[arg-type]
+        signals_service=FakeSignalsService([signal]),  # type: ignore[arg-type]
+        execution_service=execution,  # type: ignore[arg-type]
     )
 
     result = service.run_cycle(db_session)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from enum import StrEnum
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -112,7 +112,7 @@ def _position_event_response(row: PositionEvent) -> PositionEventResponse:
     )
 
 
-def _position_management_response(result: object) -> PositionManagementResponse:
+def _position_management_response(result: Any) -> PositionManagementResponse:
     return PositionManagementResponse(
         action=result.action,
         position=_position_response(result.position),
@@ -129,7 +129,11 @@ def _execution_response(
     position: Position,
     reused: bool,
 ) -> SignalExecutionResponse:
-    mode = (order.metadata_json or {}).get("mode") or (position.metadata_json or {}).get("mode") or "demo"
+    mode = (
+        (order.metadata_json or {}).get("mode")
+        or (position.metadata_json or {}).get("mode")
+        or "demo"
+    )
     return SignalExecutionResponse(
         signal_id=str(signal.id),
         reused=reused,

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,7 +15,7 @@ DECIMAL_ZERO = Decimal("0")
 
 
 class TradesService:
-    def list_active_trades(self, db: Session) -> dict[str, list[dict[str, object]]]:
+    def list_active_trades(self, db: Session) -> dict[str, Any]:
         positions = list(
             db.scalars(
                 select(Position)
@@ -35,7 +36,9 @@ class TradesService:
                 "total_positions": len(positions),
                 "total_orders": len(orders),
                 "total_open_quantity": sum((row.quantity for row in positions), DECIMAL_ZERO),
-                "total_unrealized_pnl": sum((row.unrealized_pnl for row in positions), DECIMAL_ZERO),
+                "total_unrealized_pnl": sum(
+                    (row.unrealized_pnl for row in positions), DECIMAL_ZERO
+                ),
                 "total_realized_pnl": sum((row.realized_pnl for row in positions), DECIMAL_ZERO),
                 "last_synced_at": last_synced_at,
             },
@@ -43,7 +46,7 @@ class TradesService:
             "orders": [self._order_payload(row) for row in orders],
         }
 
-    def list_trade_journal(self, db: Session) -> dict[str, list[dict[str, object]]]:
+    def list_trade_journal(self, db: Session) -> dict[str, Any]:
         rows = list(
             db.scalars(
                 select(Position)
@@ -69,12 +72,16 @@ class TradesService:
                 "losses": losses,
                 "win_rate": win_rate.quantize(Decimal("0.01")),
                 "net_pnl": net_pnl,
-                "average_pnl": average_pnl.quantize(Decimal("0.01")) if total_trades > 0 else DECIMAL_ZERO,
+                "average_pnl": (
+                    average_pnl.quantize(Decimal("0.01")) if total_trades > 0 else DECIMAL_ZERO
+                ),
             },
             "trades": trades,
         }
 
-    def telemetry_feed(self, db: Session, event_limit: int = 20, journal_limit: int = 10) -> dict[str, object]:
+    def telemetry_feed(
+        self, db: Session, event_limit: int = 20, journal_limit: int = 10
+    ) -> dict[str, object]:
         active = self.list_active_trades(db)
         journal = self.list_trade_journal(db)
         system_events = list(
@@ -256,7 +263,7 @@ class TradesService:
             return None
         return Decimal(str(value))
 
-    def _enum_string(self, value: object) -> str:
+    def _enum_string(self, value: Any) -> str:
         if isinstance(value, str):
             return value
         return str(value.value)

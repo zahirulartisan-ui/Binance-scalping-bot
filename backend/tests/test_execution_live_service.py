@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -15,14 +16,14 @@ from app.services.execution_service import ExecutionService
 
 class FakeTradingClient:
     def __init__(self) -> None:
-        self.create_payload = {
+        self.create_payload: dict[str, Any] = {
             "orderId": "9001",
             "clientOrderId": "live-entry-1",
             "status": "NEW",
             "executedQty": "0.00000000",
             "fills": [],
         }
-        self.order_payload = {
+        self.order_payload: dict[str, Any] = {
             "orderId": "9001",
             "status": "FILLED",
             "executedQty": "2.00000000",
@@ -129,7 +130,7 @@ def _live_settings() -> Settings:
 def test_live_execute_signal_submits_exchange_order(db_session: Session) -> None:
     signal = _create_signal(db_session)
     client = FakeTradingClient()
-    service = ExecutionService(_live_settings(), trading_client=client)
+    service = ExecutionService(_live_settings(), trading_client=client)  # type: ignore[arg-type]
 
     result = service.execute_signal(db_session, signal.id)
 
@@ -143,7 +144,7 @@ def test_live_execute_signal_submits_exchange_order(db_session: Session) -> None
 def test_sync_live_orders_imports_fills_and_updates_position(db_session: Session) -> None:
     signal = _create_signal(db_session)
     client = FakeTradingClient()
-    service = ExecutionService(_live_settings(), trading_client=client)
+    service = ExecutionService(_live_settings(), trading_client=client)  # type: ignore[arg-type]
     service.execute_signal(db_session, signal.id)
 
     result = service.sync_live_orders(db_session)
@@ -169,7 +170,7 @@ def test_sync_live_orders_closes_unfilled_canceled_entry(db_session: Session) ->
         "price": "100.00000000",
     }
     client.trade_payload = []
-    service = ExecutionService(_live_settings(), trading_client=client)
+    service = ExecutionService(_live_settings(), trading_client=client)  # type: ignore[arg-type]
     service.execute_signal(db_session, signal.id)
 
     result = service.sync_live_orders(db_session)
