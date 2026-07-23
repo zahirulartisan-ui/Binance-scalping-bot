@@ -85,9 +85,7 @@ class TradesService:
         active = self.list_active_trades(db)
         journal = self.list_trade_journal(db)
         system_events = list(
-            db.scalars(
-                select(SystemEvent).order_by(SystemEvent.event_at.desc()).limit(event_limit)
-            )
+            db.scalars(select(SystemEvent).order_by(SystemEvent.event_at.desc()).limit(event_limit))
         )
         journal_entries = list(
             db.scalars(

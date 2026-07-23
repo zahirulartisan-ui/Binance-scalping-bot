@@ -82,9 +82,7 @@ class SignalsService:
         return db.scalar(select(Signal).where(Signal.id == signal_id))
 
     def _promote_decision(self, db: Session, row: ScannerDecision) -> tuple[Signal, bool]:
-        existing = db.scalar(
-            select(Signal).where(Signal.scanner_decision_id == row.id).limit(1)
-        )
+        existing = db.scalar(select(Signal).where(Signal.scanner_decision_id == row.id).limit(1))
         if existing is not None:
             return existing, False
 

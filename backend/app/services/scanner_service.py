@@ -224,9 +224,7 @@ class ScannerService:
             return ScannerDecisionType.WATCH
         return ScannerDecisionType.IGNORE
 
-    def _reason_for_result(
-        self, setup_state: StrategySetupState, eligible_for_signal: bool
-    ) -> str:
+    def _reason_for_result(self, setup_state: StrategySetupState, eligible_for_signal: bool) -> str:
         if setup_state is StrategySetupState.READY and eligible_for_signal:
             return "strategy_ready"
         if setup_state is StrategySetupState.READY:

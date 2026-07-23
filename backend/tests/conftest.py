@@ -50,6 +50,10 @@ def client(
 ) -> Generator[TestClient, None, None]:
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("DATABASE_URL", "sqlite+pysqlite:///:memory:")
+    monkeypatch.setenv("BINANCE_FUTURES_DEMO_API_KEY", "mock-futures-key")
+    monkeypatch.setenv("BINANCE_FUTURES_DEMO_API_SECRET", "mock-futures-secret")
+    monkeypatch.setenv("BINANCE_FUTURES_DEMO_BASE_URL", "https://demo-fapi.binance.com")
+    monkeypatch.setenv("BINANCE_FUTURES_DEMO_MARKET_DATA_URL", "https://demo-fapi.binance.com")
     get_settings.cache_clear()
     app = create_app()
 

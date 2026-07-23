@@ -122,8 +122,8 @@ def _live_settings() -> Settings:
         database_url="sqlite+pysqlite:///:memory:",
         execution_enabled=True,
         demo_trading_mode=False,
-        binance_api_key="live-key",
-        binance_api_secret="live-secret",
+        binance_futures_demo_api_key="live-key",
+        binance_futures_demo_api_secret="live-secret",
     )
 
 

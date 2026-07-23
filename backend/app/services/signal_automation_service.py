@@ -110,11 +110,7 @@ class SignalAutomationService:
         ]
 
     def _record_system_event(self, db: Session, summary: SignalAutomationResult) -> None:
-        level = (
-            SystemEventLevel.WARNING
-            if summary.blocked_count > 0
-            else SystemEventLevel.INFO
-        )
+        level = SystemEventLevel.WARNING if summary.blocked_count > 0 else SystemEventLevel.INFO
         db.add(
             SystemEvent(
                 level=level,

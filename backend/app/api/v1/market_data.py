@@ -58,8 +58,7 @@ def read_symbols(
     if active_only:
         statement = statement.where(ExchangeSymbol.trading_status == "TRADING")
     return [
-        SymbolResponse.model_validate(row, from_attributes=True)
-        for row in db.scalars(statement)
+        SymbolResponse.model_validate(row, from_attributes=True) for row in db.scalars(statement)
     ]
 
 
@@ -86,8 +85,7 @@ def read_candles(
     if end_time:
         statement = statement.where(OhlcvCandle.open_time < end_time)
     return [
-        CandleResponse.model_validate(row, from_attributes=True)
-        for row in db.scalars(statement)
+        CandleResponse.model_validate(row, from_attributes=True) for row in db.scalars(statement)
     ]
 
 

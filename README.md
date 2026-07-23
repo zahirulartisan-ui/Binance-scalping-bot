@@ -1,5 +1,16 @@
 # Binance Scalping Bot
 
+## ⚠️ Binance USD-M Futures Demo Safety Foundation ONLY
+This application is strictly locked to **Binance USD-M Futures Demo-only operation** on the official Binance testnet environment (`https://testnet.binancefuture.com`).
+- **No Spot trading** is supported. All previous spot assumptions have been removed or blocked.
+- **No Binance production trading** is supported. Unsafe production endpoints/hosts are strictly rejected.
+- **No real-money support** is provided.
+- **Execution defaults to OFF**.
+- **Emergency stop** immediately overrides and blocks all execution.
+- **Account synchronization** is NOT yet implemented.
+- **Order execution** (LONG or SHORT) is NOT yet implemented and is disabled in this foundational safety prompt.
+- **Internal simulation mode** is strictly isolated and disabled by default to prevent fake exchange execution ambiguity.
+
 Batch 1 established the project foundation for a Binance scalping auto-trading V1 application. Batch 2 added central settings, database session handling, schema foundations, settings APIs, and expanded health reporting. Batch 3 added Binance public market-data integration. Batch 4 added a deterministic market regime filter. Batch 5 adds one deterministic strategy setup engine: Trend Pullback Continuation. It does not include signal grading, account risk sizing, account access, Binance order execution, mock trading data, or fabricated account metrics.
 
 ## Completed Batch 1 Scope

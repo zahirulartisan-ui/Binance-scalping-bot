@@ -39,6 +39,12 @@ def _enable_demo_execution(db_session: Session) -> None:
                 description="test",
             ),
             AppSetting(
+                key="demo_trading_mode",
+                value={"value": True},
+                value_type="boolean",
+                description="test",
+            ),
+            AppSetting(
                 key="demo_account_balance",
                 value={"value": 1000.0},
                 value_type="decimal",
@@ -63,7 +69,7 @@ def test_execution_status_reports_disabled_by_default(client: TestClient) -> Non
     assert response.status_code == 200
     payload = response.json()
     assert payload["execution_enabled"] is False
-    assert payload["demo_trading_mode"] is True
+    assert payload["demo_trading_mode"] is False
     assert payload["unsupported_open_positions"] == 0
     assert payload["executable"] is False
     assert "execution_disabled" in payload["reasons"]
@@ -77,7 +83,7 @@ def test_execute_signal_opens_demo_position(client: TestClient, db_session: Sess
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["mode"] == "demo"
+    assert payload["mode"] == "internal_simulation"
     assert payload["reused"] is False
     assert payload["risk_decision"]["status"] == "approved"
     assert payload["order"]["status"] == "filled"

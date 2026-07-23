@@ -82,9 +82,7 @@ class TradeManagementRunner:
         if not bool(runtime["position_monitoring_enabled"]):
             return
 
-        rows = list(
-            db.scalars(select(Position).where(Position.status == PositionStatus.OPEN))
-        )
+        rows = list(db.scalars(select(Position).where(Position.status == PositionStatus.OPEN)))
         symbols = sorted({row.symbol for row in rows if self._is_demo_position(row)})
         if not symbols:
             return
@@ -118,9 +116,7 @@ class TradeManagementRunner:
             db.add(
                 SystemEvent(
                     level=(
-                        SystemEventLevel.WARNING
-                        if unavailable_symbols
-                        else SystemEventLevel.INFO
+                        SystemEventLevel.WARNING if unavailable_symbols else SystemEventLevel.INFO
                     ),
                     source="trade_management_runner",
                     message=(

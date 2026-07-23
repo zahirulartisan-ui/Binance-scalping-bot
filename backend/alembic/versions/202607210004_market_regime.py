@@ -4,6 +4,7 @@ Revision ID: 202607210004
 Revises: 202607210003
 Create Date: 2026-07-21 00:00:04
 """
+
 from __future__ import annotations
 
 import sqlalchemy as sa
@@ -46,8 +47,7 @@ def upgrade() -> None:
             name="ck_regime_snapshots_regime",
         ),
         sa.CheckConstraint(
-            "entry_permission IN ('ALLOW_LONG', 'ALLOW_SHORT', 'ALLOW_BOTH', "
-            "'BLOCK_NEW_ENTRIES')",
+            "entry_permission IN ('ALLOW_LONG', 'ALLOW_SHORT', 'ALLOW_BOTH', 'BLOCK_NEW_ENTRIES')",
             name="ck_regime_snapshots_entry_permission",
         ),
         sa.CheckConstraint(
