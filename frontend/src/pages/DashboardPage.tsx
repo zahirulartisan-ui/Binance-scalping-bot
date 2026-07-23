@@ -163,9 +163,9 @@ export const DashboardPage: React.FC = () => {
         </div>
         <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-xl">
           <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Unrealized PnL</div>
-          <div className={`mt-1 text-2xl font-bold font-mono ${(telemetry?.summary?.total_unrealized_pnl ?? 0) >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-            {(telemetry?.summary?.total_unrealized_pnl ?? 0) >= 0 ? "+" : ""}
-            ${(telemetry?.summary?.total_unrealized_pnl ?? 0).toFixed(2)}
+          <div className={`mt-1 text-2xl font-bold font-mono ${Number(telemetry?.summary?.total_unrealized_pnl ?? 0) >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+            {Number(telemetry?.summary?.total_unrealized_pnl ?? 0) >= 0 ? "+" : ""}
+            ${Number(telemetry?.summary?.total_unrealized_pnl ?? 0).toFixed(2)}
           </div>
         </div>
       </section>

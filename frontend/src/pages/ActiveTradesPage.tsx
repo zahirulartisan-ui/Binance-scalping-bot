@@ -171,8 +171,8 @@ export const ActiveTradesPage: React.FC = () => {
             </div>
             <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-xl space-y-1">
               <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Unrealized PnL</div>
-              <div className={`text-xl font-bold font-mono ${(summary?.total_unrealized_pnl || 0) >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                {(summary?.total_unrealized_pnl || 0) >= 0 ? "+" : ""}${(summary?.total_unrealized_pnl || 0).toFixed(2)}
+              <div className={`text-xl font-bold font-mono ${Number(summary?.total_unrealized_pnl || 0) >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                {Number(summary?.total_unrealized_pnl || 0) >= 0 ? "+" : ""}${Number(summary?.total_unrealized_pnl || 0).toFixed(2)}
               </div>
             </div>
           </div>
