@@ -164,9 +164,8 @@ class MarketRegimeService:
             )
 
         max_volatility = max(atr_percent, rv)
-        if (
-            atr_percent > Decimal(str(self.settings.regime_atr_percent_max))
-            or rv > Decimal(str(self.settings.regime_realized_volatility_max))
+        if atr_percent > Decimal(str(self.settings.regime_atr_percent_max)) or rv > Decimal(
+            str(self.settings.regime_realized_volatility_max)
         ):
             return self._blocked(
                 symbol,
@@ -237,10 +236,8 @@ class MarketRegimeService:
                 self._snapshot(indicators),
             )
 
-        if (
-            trend_strength < trend_threshold
-            and indicators["recent_range"]
-            <= Decimal(str(self.settings.regime_range_compression_threshold))
+        if trend_strength < trend_threshold and indicators["recent_range"] <= Decimal(
+            str(self.settings.regime_range_compression_threshold)
         ):
             return self._blocked(
                 symbol,
@@ -390,9 +387,7 @@ class MarketRegimeService:
         indicators: dict[str, Any],
     ) -> RegimeEvaluation:
         confidence = (
-            Decimal("0.0")
-            if permission is EntryPermission.BLOCK_NEW_ENTRIES
-            else Decimal("1.0")
+            Decimal("0.0") if permission is EntryPermission.BLOCK_NEW_ENTRIES else Decimal("1.0")
         )
         return RegimeEvaluation(
             symbol,

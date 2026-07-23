@@ -44,7 +44,7 @@ def create_app() -> FastAPI:
                 raise
         if app.state.database_available:
             client = BinanceMarketDataClient(
-                base_url=settings.binance_market_data_base_url,
+                base_url=settings.binance_futures_demo_market_data_url,
                 timeout_seconds=settings.binance_market_data_timeout_seconds,
                 max_retries=settings.binance_market_data_max_retries,
                 backoff_seconds=settings.binance_market_data_backoff_seconds,

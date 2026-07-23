@@ -24,6 +24,7 @@ class LogLevel(StrEnum):
 
 
 class StrategyMode(StrEnum):
+    FUTURES_DEMO = "futures_demo"
     SPOT_LONG_ONLY = "spot_long_only"
 
 
@@ -41,12 +42,13 @@ class Settings(BaseSettings):
     log_level: LogLevel = LogLevel.INFO
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/binance_scalping_bot"
     allowed_origins: list[str] = ["http://localhost:5173"]
-    binance_demo_api_key: SecretStr | None = None
-    binance_demo_api_secret: SecretStr | None = None
-    binance_api_key: SecretStr | None = None
-    binance_api_secret: SecretStr | None = None
+    binance_futures_demo_base_url: str = Field(default="https://demo-fapi.binance.com")
+    binance_futures_demo_market_data_url: str = Field(default="https://demo-fapi.binance.com")
+    binance_futures_demo_api_key: SecretStr | None = None
+    binance_futures_demo_api_secret: SecretStr | None = None
+    binance_recv_window: int = Field(default=5000, ge=1000, le=60000)
     execution_enabled: bool = False
-    demo_trading_mode: bool = True
+    demo_trading_mode: bool = False  # Isolate/disable simulated demo execution path
     demo_account_balance: float = Field(default=1000.0, gt=0, le=1000000000)
     scanner_interval_seconds: int = Field(default=30, ge=5, le=3600)
     signal_execution_automation_enabled: bool = False
@@ -55,14 +57,12 @@ class Settings(BaseSettings):
     maximum_open_trades: int = Field(default=3, ge=0, le=50)
     daily_loss_limit: float = Field(default=0.03, gt=0, le=0.5)
     emergency_stop: bool = False
-    binance_trading_base_url: str = "https://api.binance.com"
     binance_trading_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
     binance_trading_max_retries: int = Field(default=2, ge=0, le=5)
     binance_trading_backoff_seconds: float = Field(default=0.25, ge=0, le=5)
     position_monitoring_enabled: bool = True
     position_monitoring_interval_seconds: int = Field(default=15, ge=5, le=300)
     position_monitoring_price_max_age_seconds: int = Field(default=75, ge=5, le=600)
-    binance_market_data_base_url: str = "https://api.binance.com"
     binance_market_data_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
     binance_market_data_max_retries: int = Field(default=2, ge=0, le=5)
     binance_market_data_backoff_seconds: float = Field(default=0.25, ge=0, le=5)
@@ -84,7 +84,7 @@ class Settings(BaseSettings):
     regime_cache_seconds: int = Field(default=30, ge=1, le=3600)
     strategy_enabled: bool = True
     strategy_version: str = "trend-pullback-v1"
-    strategy_supported_trading_mode: StrategyMode = StrategyMode.SPOT_LONG_ONLY
+    strategy_supported_trading_mode: StrategyMode = StrategyMode.FUTURES_DEMO
     strategy_entry_timeframe: str = "1m"
     strategy_confirmation_timeframe: str = "5m"
     strategy_context_timeframe: str = "15m"
@@ -172,8 +172,29 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_safe_startup(self) -> Settings:
+        from urllib.parse import urlparse
+
+        for field_name in ["binance_futures_demo_base_url", "binance_futures_demo_market_data_url"]:
+            val = getattr(self, field_name, None)
+            if not val:
+                raise ValueError(f"{field_name} must not be empty")
+            try:
+                parsed = urlparse(val)
+            except Exception as e:
+                raise ValueError(f"{field_name} is malformed: {str(e)}") from e
+            if parsed.scheme != "https":
+                raise ValueError(f"{field_name} must use HTTPS")
+            if parsed.netloc != "demo-fapi.binance.com":
+                raise ValueError(f"{field_name} netloc must be demo-fapi.binance.com")
+
         if self.emergency_stop and self.execution_enabled:
             raise ValueError("execution cannot be enabled while EMERGENCY_STOP is true")
+
+        if self.strategy_supported_trading_mode == StrategyMode.SPOT_LONG_ONLY:
+            raise ValueError("Spot trading is unsupported in this version")
+
+        if self.demo_trading_mode and self.app_env != AppEnvironment.TEST:
+            raise ValueError("Internal simulated demo_trading_mode is disabled; use Futures Demo")
 
         if self.app_env is not AppEnvironment.TEST and not self.database_url.startswith(
             ("postgresql+psycopg://", "postgresql://")
@@ -183,18 +204,18 @@ class Settings(BaseSettings):
         if self.app_env is AppEnvironment.PRODUCTION:
             if self.execution_enabled:
                 raise ValueError("execution must remain disabled in production for V1")
-            if self.demo_trading_mode:
-                raise ValueError("production mode cannot run with DEMO_TRADING_MODE enabled")
             if any(origin == "*" for origin in self.allowed_origins):
                 raise ValueError("production mode cannot allow wildcard CORS origins")
             if "localhost" in self.database_url or "127.0.0.1" in self.database_url:
                 raise ValueError("production mode cannot use a local database URL")
-        if (
-            self.execution_enabled
-            and not self.demo_trading_mode
-            and (self.binance_api_key is None or self.binance_api_secret is None)
+
+        if self.execution_enabled and (
+            not self.binance_futures_demo_api_key or not self.binance_futures_demo_api_secret
         ):
-            raise ValueError("live execution requires BINANCE_API_KEY and BINANCE_API_SECRET")
+            raise ValueError(
+                "Binance Futures Demo credentials are required when execution is enabled"
+            )
+
         if self.strategy_entry_timeframe != "1m":
             raise ValueError("trend pullback strategy entry timeframe must be 1m")
         if self.strategy_confirmation_timeframe != "5m":
@@ -218,10 +239,8 @@ class Settings(BaseSettings):
         return self
 
     @field_serializer(
-        "binance_demo_api_key",
-        "binance_demo_api_secret",
-        "binance_api_key",
-        "binance_api_secret",
+        "binance_futures_demo_api_key",
+        "binance_futures_demo_api_secret",
     )
     def serialize_secret(self, value: SecretStr | None) -> str | None:
         if value is None:

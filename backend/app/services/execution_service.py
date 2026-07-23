@@ -6,10 +6,10 @@ from datetime import UTC, datetime
 from decimal import ROUND_DOWN, Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from app.core.settings import Settings
+from app.core.settings import Settings, StrategyMode
 from app.models.enums import (
     JournalEntryType,
     OrderSide,
@@ -118,32 +118,105 @@ class ExecutionService:
     def get_status(self, db: Session) -> ExecutionStatusSnapshot:
         runtime = self._runtime_settings(db)
         open_positions = self._count_open_positions(db)
-        expected_mode = "demo" if bool(runtime["demo_trading_mode"]) else "live"
-        unsupported_open_positions = self._count_unsupported_open_positions(db, expected_mode)
+
+        # Check database connectivity
+        database_ready = True
+        try:
+            db.execute(text("SELECT 1"))
+        except Exception:
+            database_ready = False
+
+        # Check migrations
+        migrations_ready_flag = True
+        try:
+            from sqlalchemy import Engine
+
+            from app.services.migration_service import migrations_ready
+
+            bind = db.get_bind()
+            if isinstance(bind, Engine):
+                migrations_ready_flag = migrations_ready(bind, self.settings)
+            else:
+                migrations_ready_flag = False
+        except Exception:
+            migrations_ready_flag = False
+
+        reasons: list[str] = []
+
+        # 1. execution_disabled
+        if not runtime.get("execution_enabled"):
+            reasons.append("execution_disabled")
+
+        # 2. emergency_stop_active
+        if self.settings.emergency_stop or runtime.get("emergency_stop"):
+            reasons.append("emergency_stop_active")
+
+        # 3. futures_demo_credentials_missing
+        if runtime.get("execution_enabled") and (
+            not self.settings.binance_futures_demo_api_key
+            or not self.settings.binance_futures_demo_api_secret
+        ):
+            reasons.append("futures_demo_credentials_missing")
+
+        # 4. unsafe_exchange_endpoint
+        from urllib.parse import urlparse
+
+        for url_val in [
+            self.settings.binance_futures_demo_base_url,
+            self.settings.binance_futures_demo_market_data_url,
+        ]:
+            if not url_val:
+                reasons.append("unsafe_exchange_endpoint")
+                break
+            try:
+                parsed = urlparse(url_val)
+                if parsed.scheme != "https" or parsed.netloc != "demo-fapi.binance.com":
+                    reasons.append("unsafe_exchange_endpoint")
+                    break
+            except Exception:
+                reasons.append("unsafe_exchange_endpoint")
+                break
+
+        # 5. unsupported_exchange_scope / unsupported_trading_mode
+        if self.settings.strategy_supported_trading_mode != StrategyMode.FUTURES_DEMO:
+            reasons.append("unsupported_exchange_scope")
+            reasons.append("unsupported_trading_mode")
+
+        if self.settings.demo_trading_mode:
+            reasons.append("unsupported_trading_mode")
+
+        # 6. database_not_ready
+        if not database_ready:
+            reasons.append("database_not_ready")
+
+        # 7. migrations_not_ready
+        if not migrations_ready_flag:
+            reasons.append("migrations_not_ready")
+
+        # Other limits:
         realized_pnl_today = self._realized_pnl_today(db)
         daily_loss_limit_amount = (
             runtime["demo_account_balance"] * runtime["daily_loss_limit"]
         ).quantize(DECIMAL_EIGHT_PLACES)
-        reasons: list[str] = []
-        if not runtime["execution_enabled"]:
-            reasons.append("execution_disabled")
-        if runtime["emergency_stop"]:
-            reasons.append("emergency_stop_active")
-        if not runtime["demo_trading_mode"] and (
-            self.settings.binance_api_key is None or self.settings.binance_api_secret is None
-        ):
-            reasons.append("live_credentials_missing")
-        if unsupported_open_positions > 0:
-            reasons.append("unsupported_open_positions_present")
+
         if open_positions >= runtime["maximum_open_trades"]:
             reasons.append("maximum_open_trades_reached")
         if realized_pnl_today <= -daily_loss_limit_amount:
             reasons.append("daily_loss_limit_reached")
 
+        # unsupported_open_positions_present
+        unsupported_open_positions = 0
+        for pos in db.scalars(select(Position).where(Position.status == PositionStatus.OPEN)):
+            mode = pos.metadata_json.get("mode") if pos.metadata_json else None
+            if mode != "futures_demo":
+                unsupported_open_positions += 1
+        if unsupported_open_positions > 0:
+            reasons.append("unsupported_open_positions_present")
+
         return ExecutionStatusSnapshot(
-            execution_enabled=runtime["execution_enabled"],
-            demo_trading_mode=runtime["demo_trading_mode"],
-            emergency_stop=runtime["emergency_stop"],
+            execution_enabled=runtime.get("execution_enabled", False),
+            demo_trading_mode=runtime.get("demo_trading_mode", False),
+            emergency_stop=runtime.get("emergency_stop", False),
             demo_account_balance=runtime["demo_account_balance"],
             risk_per_trade=runtime["risk_per_trade"],
             daily_loss_limit=runtime["daily_loss_limit"],
@@ -306,7 +379,7 @@ class ExecutionService:
             opened_at=now,
             metadata_json={
                 "signal_id": str(signal.id),
-                "mode": "demo",
+                "mode": "internal_simulation",
                 "stop_loss_price": str(stop_loss),
                 "initial_stop_loss_price": str(stop_loss),
                 "take_profit_price": str(signal.take_profit_price)
@@ -326,9 +399,9 @@ class ExecutionService:
             db=db,
             signal=signal,
             status=RiskDecisionStatus.APPROVED,
-            reason_code="execution_approved",
+            reason_code="internal_simulation_approved",
             metadata_json={
-                "mode": "demo",
+                "mode": "internal_simulation",
                 "entry_price": str(entry_price),
                 "stop_loss_price": str(stop_loss),
                 "quantity": str(quantity),
@@ -339,8 +412,8 @@ class ExecutionService:
         order = Order(
             signal_id=signal.id,
             position_id=position.id,
-            client_order_id=f"demo-entry-{signal.id}",
-            exchange_order_id=f"demo-entry-{signal.id}",
+            client_order_id=f"sim-entry-{signal.id}",
+            exchange_order_id=f"sim-entry-{signal.id}",
             symbol=signal.symbol,
             side=OrderSide.BUY,
             order_type=OrderType.LIMIT,
@@ -350,20 +423,20 @@ class ExecutionService:
             filled_quantity=quantity,
             fee=DECIMAL_ZERO,
             submitted_at=now,
-            metadata_json={"mode": "demo", "note": note},
+            metadata_json={"mode": "internal_simulation", "note": note},
         )
         db.add(order)
         db.flush()
 
         fill = Fill(
             order_id=order.id,
-            exchange_trade_id=f"demo-fill-entry-{order.id}",
+            exchange_trade_id=f"sim-fill-entry-{order.id}",
             price=entry_price,
             quantity=quantity,
             fee=DECIMAL_ZERO,
             fee_asset="USDT",
             filled_at=now,
-            metadata_json={"mode": "demo"},
+            metadata_json={"mode": "internal_simulation"},
         )
         event = PositionEvent(
             position_id=position.id,
@@ -372,21 +445,24 @@ class ExecutionService:
             price=entry_price,
             realized_pnl_delta=DECIMAL_ZERO,
             event_at=now,
-            metadata_json={"signal_id": str(signal.id), "mode": "demo"},
+            metadata_json={"signal_id": str(signal.id), "mode": "internal_simulation"},
+        )
+        journal_body = note or (
+            "Execution foundation opened an internal simulation position from a promoted signal."
         )
         journal = TradeJournalEntry(
             position_id=position.id,
             symbol=position.symbol,
             entry_type=JournalEntryType.NOTE,
-            title=f"Demo entry executed for {position.symbol}",
-            body=note or "Execution foundation opened a demo position from a promoted signal.",
+            title=f"Internal simulation entry executed for {position.symbol}",
+            body=journal_body,
             entry_at=now,
             metadata_json={"signal_id": str(signal.id)},
         )
         system_event = SystemEvent(
             level=SystemEventLevel.INFO,
             source="execution_service",
-            message=f"Demo execution opened position for {position.symbol}",
+            message=f"Internal simulation execution opened position for {position.symbol}",
             idempotency_key=f"system-entry-{signal.id}",
             event_at=now,
             metadata_json={
@@ -402,7 +478,7 @@ class ExecutionService:
             **(signal.metadata_json or {}),
             "last_execution_at": now.isoformat(),
             "position_id": str(position.id),
-            "execution_mode": "demo",
+            "execution_mode": "internal_simulation",
         }
         db.flush()
         return ExecutionResult(
@@ -771,9 +847,8 @@ class ExecutionService:
         if self._enum_string(position.status) != PositionStatus.OPEN.value:
             return actions
 
-        if (
-            current_rr >= Decimal(str(self.settings.position_break_even_trigger_rr))
-            and not bool((position.metadata_json or {}).get("break_even_moved"))
+        if current_rr >= Decimal(str(self.settings.position_break_even_trigger_rr)) and not bool(
+            (position.metadata_json or {}).get("break_even_moved")
         ):
             event = self._update_stop(
                 db=db,
@@ -870,8 +945,8 @@ class ExecutionService:
         order = Order(
             signal_id=signal.id if signal is not None else None,
             position_id=position.id,
-            client_order_id=f"demo-{action}-{position.id}-{uuid.uuid4().hex[:8]}",
-            exchange_order_id=f"demo-{action}-{position.id}",
+            client_order_id=f"sim-{action}-{position.id}-{uuid.uuid4().hex[:8]}",
+            exchange_order_id=f"sim-{action}-{position.id}",
             symbol=position.symbol,
             side=OrderSide.SELL,
             order_type=OrderType.MARKET,
@@ -881,20 +956,20 @@ class ExecutionService:
             filled_quantity=quantity,
             fee=DECIMAL_ZERO,
             submitted_at=now,
-            metadata_json={"mode": "demo", "note": note, "reason": reason},
+            metadata_json={"mode": "internal_simulation", "note": note, "reason": reason},
         )
         db.add(order)
         db.flush()
 
         fill = Fill(
             order_id=order.id,
-            exchange_trade_id=f"demo-fill-{action}-{order.id}",
+            exchange_trade_id=f"sim-fill-{action}-{order.id}",
             price=exit_price,
             quantity=quantity,
             fee=DECIMAL_ZERO,
             fee_asset="USDT",
             filled_at=now,
-            metadata_json={"mode": "demo", "reason": reason},
+            metadata_json={"mode": "internal_simulation", "reason": reason},
         )
         event = PositionEvent(
             position_id=position.id,
@@ -1130,9 +1205,7 @@ class ExecutionService:
         }
 
     def _count_open_positions(self, db: Session) -> int:
-        return len(
-            list(db.scalars(select(Position).where(Position.status == PositionStatus.OPEN)))
-        )
+        return len(list(db.scalars(select(Position).where(Position.status == PositionStatus.OPEN))))
 
     def _count_unsupported_open_positions(self, db: Session, expected_mode: str) -> int:
         return sum(
@@ -1359,14 +1432,10 @@ class ExecutionService:
             )
         )
         buy_fills = [
-            fill
-            for fill in fills
-            if self._enum_string(fill.order.side) == OrderSide.BUY.value
+            fill for fill in fills if self._enum_string(fill.order.side) == OrderSide.BUY.value
         ]
         sell_fills = [
-            fill
-            for fill in fills
-            if self._enum_string(fill.order.side) == OrderSide.SELL.value
+            fill for fill in fills if self._enum_string(fill.order.side) == OrderSide.SELL.value
         ]
         total_buy_quantity = sum((fill.quantity for fill in buy_fills), DECIMAL_ZERO)
         total_sell_quantity = sum((fill.quantity for fill in sell_fills), DECIMAL_ZERO)
@@ -1418,12 +1487,18 @@ class ExecutionService:
     def _get_trading_client(self) -> BinanceTradingClient:
         if self.trading_client is not None:
             return self.trading_client
-        if self.settings.binance_api_key is None or self.settings.binance_api_secret is None:
-            raise ExecutionConflictError("live_credentials_missing")
+        has_keys = (
+            self.settings.binance_futures_demo_api_key is not None
+            and self.settings.binance_futures_demo_api_secret is not None
+        )
+        if not has_keys:
+            raise ExecutionConflictError("futures_demo_credentials_missing")
+        assert self.settings.binance_futures_demo_api_key is not None
+        assert self.settings.binance_futures_demo_api_secret is not None
         self.trading_client = BinanceTradingClient(
-            api_key=self.settings.binance_api_key.get_secret_value(),
-            api_secret=self.settings.binance_api_secret.get_secret_value(),
-            base_url=self.settings.binance_trading_base_url,
+            api_key=self.settings.binance_futures_demo_api_key.get_secret_value(),
+            api_secret=self.settings.binance_futures_demo_api_secret.get_secret_value(),
+            base_url=self.settings.binance_futures_demo_base_url,
             timeout_seconds=self.settings.binance_trading_timeout_seconds,
             max_retries=self.settings.binance_trading_max_retries,
             backoff_seconds=self.settings.binance_trading_backoff_seconds,
@@ -1431,16 +1506,17 @@ class ExecutionService:
         return self.trading_client
 
     def _is_demo_position(self, position: Position) -> bool:
-        return self._position_mode(position) == "demo"
+        return self._position_mode(position) in {"demo", "internal_simulation"}
 
     def _position_mode(self, position: Position) -> str:
         metadata = position.metadata_json or {}
-        mode = metadata.get("mode") or metadata.get("execution_mode") or "demo"
+        mode = metadata.get("mode") or metadata.get("execution_mode") or "internal_simulation"
         return str(mode).lower()
 
     def _is_live_order(self, order: Order) -> bool:
         metadata = order.metadata_json or {}
-        return str(metadata.get("mode") or "").lower() == "live"
+        mode = str(metadata.get("mode") or "").lower()
+        return mode in {"live", "futures_demo"}
 
     def _assert_demo_position(self, position: Position) -> None:
         if not self._is_demo_position(position):

@@ -4,6 +4,7 @@ Revision ID: 202607210003
 Revises: 202607210002
 Create Date: 2026-07-21 00:00:03
 """
+
 from __future__ import annotations
 
 import sqlalchemy as sa
