@@ -107,7 +107,11 @@ class MarketDataRunner:
                 book_payload = self.client.book_ticker(symbol)
                 if persist_snapshot(db, parse_snapshot(symbol, price_payload, book_payload)):
                     snapshots_stored += 1
-                for timeframe in (CandleTimeframe.ONE_MINUTE, CandleTimeframe.FIVE_MINUTES):
+                for timeframe in (
+                    CandleTimeframe.ONE_MINUTE,
+                    CandleTimeframe.FIVE_MINUTES,
+                    CandleTimeframe.FIFTEEN_MINUTES,
+                ):
                     klines = self.client.klines(symbol, timeframe.value, limit=2)
                     if not klines:
                         raise ValueError("no candles returned")

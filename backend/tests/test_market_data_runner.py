@@ -22,9 +22,11 @@ class FakeClient:
         return {"bidPrice": "9", "askPrice": "11", "bidQty": "1", "askQty": "1"}
 
     def klines(self, symbol: str, interval: str, limit: int = 2) -> list[list[object]]:
-        now = datetime.now(UTC) - timedelta(minutes=5)
+        now = datetime.now(UTC) - timedelta(minutes=20)
         open_ms = int(now.timestamp() * 1000)
-        close_ms = int((now + timedelta(minutes=1) - timedelta(milliseconds=1)).timestamp() * 1000)
+        minutes = 15 if interval == "15m" else (5 if interval == "5m" else 1)
+        close_time = now + timedelta(minutes=minutes) - timedelta(milliseconds=1)
+        close_ms = int(close_time.timestamp() * 1000)
         return [[open_ms, "10", "11", "9", "10", "1", close_ms, "10", 1, "1", "10", "0"]]
 
 
