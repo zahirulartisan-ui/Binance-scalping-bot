@@ -9,7 +9,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.settings import Settings
-from app.models.market_data import ExchangeSymbol
 from app.models.enums import (
     JournalEntryType,
     OrderSide,
@@ -21,6 +20,7 @@ from app.models.enums import (
     SignalStatus,
     SystemEventLevel,
 )
+from app.models.market_data import ExchangeSymbol
 from app.models.trading import (
     Fill,
     Order,
@@ -1337,7 +1337,11 @@ class ExecutionService:
 
     def _reconcile_live_position(self, db: Session, position: Position) -> None:
         orders = list(
-            db.scalars(select(Order).where(Order.position_id == position.id).order_by(Order.created_at.asc()))
+            db.scalars(
+                select(Order)
+                .where(Order.position_id == position.id)
+                .order_by(Order.created_at.asc())
+            )
         )
         fills = list(
             db.scalars(
@@ -1360,7 +1364,9 @@ class ExecutionService:
         total_buy_quantity = sum((fill.quantity for fill in buy_fills), DECIMAL_ZERO)
         total_sell_quantity = sum((fill.quantity for fill in sell_fills), DECIMAL_ZERO)
         if total_buy_quantity > DECIMAL_ZERO:
-            total_buy_notional = sum((fill.price * fill.quantity for fill in buy_fills), DECIMAL_ZERO)
+            total_buy_notional = sum(
+                (fill.price * fill.quantity for fill in buy_fills), DECIMAL_ZERO
+            )
             position.average_entry_price = self._quantize(total_buy_notional / total_buy_quantity)
         net_quantity = self._quantize(total_buy_quantity - total_sell_quantity)
         position.quantity = max(net_quantity, DECIMAL_ZERO)
@@ -1393,7 +1399,9 @@ class ExecutionService:
                 }
             elif total_sell_quantity > DECIMAL_ZERO:
                 position.status = PositionStatus.CLOSED
-                position.closed_at = max((fill.filled_at for fill in sell_fills), default=datetime.now(UTC))
+                position.closed_at = max(
+                    (fill.filled_at for fill in sell_fills), default=datetime.now(UTC)
+                )
             else:
                 position.status = PositionStatus.OPEN
         else:

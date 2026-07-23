@@ -189,9 +189,12 @@ class Settings(BaseSettings):
                 raise ValueError("production mode cannot allow wildcard CORS origins")
             if "localhost" in self.database_url or "127.0.0.1" in self.database_url:
                 raise ValueError("production mode cannot use a local database URL")
-        if self.execution_enabled and not self.demo_trading_mode:
-            if self.binance_api_key is None or self.binance_api_secret is None:
-                raise ValueError("live execution requires BINANCE_API_KEY and BINANCE_API_SECRET")
+        if (
+            self.execution_enabled
+            and not self.demo_trading_mode
+            and (self.binance_api_key is None or self.binance_api_secret is None)
+        ):
+            raise ValueError("live execution requires BINANCE_API_KEY and BINANCE_API_SECRET")
         if self.strategy_entry_timeframe != "1m":
             raise ValueError("trend pullback strategy entry timeframe must be 1m")
         if self.strategy_confirmation_timeframe != "5m":
@@ -249,7 +252,9 @@ class Settings(BaseSettings):
             "emergency_stop": self.emergency_stop,
             "position_monitoring_enabled": self.position_monitoring_enabled,
             "position_monitoring_interval_seconds": self.position_monitoring_interval_seconds,
-            "position_monitoring_price_max_age_seconds": self.position_monitoring_price_max_age_seconds,
+            "position_monitoring_price_max_age_seconds": (
+                self.position_monitoring_price_max_age_seconds
+            ),
             "market_data_collection_enabled": self.market_data_collection_enabled,
             "market_data_symbol_refresh_seconds": self.market_data_symbol_refresh_seconds,
             "market_data_cycle_interval_seconds": self.market_data_cycle_interval_seconds,

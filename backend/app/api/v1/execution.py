@@ -129,7 +129,11 @@ def _execution_response(
     position: Position,
     reused: bool,
 ) -> SignalExecutionResponse:
-    mode = (order.metadata_json or {}).get("mode") or (position.metadata_json or {}).get("mode") or "demo"
+    mode = (
+        (order.metadata_json or {}).get("mode")
+        or (position.metadata_json or {}).get("mode")
+        or "demo"
+    )
     return SignalExecutionResponse(
         signal_id=str(signal.id),
         reused=reused,

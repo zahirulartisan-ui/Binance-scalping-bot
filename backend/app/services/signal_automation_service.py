@@ -121,7 +121,8 @@ class SignalAutomationService:
                 source="signal_automation_service",
                 message=(
                     f"Signal automation scanned {summary.symbols_scanned} symbols, "
-                    f"promoted {summary.promoted_count}, and executed {summary.executed_count} signals."
+                    f"promoted {summary.promoted_count}, "
+                    f"and executed {summary.executed_count} signals."
                 ),
                 idempotency_key=f"signal-automation-{uuid.uuid4()}",
                 event_at=datetime.now(UTC),

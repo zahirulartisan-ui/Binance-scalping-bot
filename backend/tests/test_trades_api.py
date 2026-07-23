@@ -6,7 +6,14 @@ from decimal import Decimal
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models.enums import JournalEntryType, OrderSide, OrderStatus, OrderType, PositionStatus, SystemEventLevel
+from app.models.enums import (
+    JournalEntryType,
+    OrderSide,
+    OrderStatus,
+    OrderType,
+    PositionStatus,
+    SystemEventLevel,
+)
 from app.models.trading import Order, Position, SystemEvent, TradeJournalEntry
 
 
