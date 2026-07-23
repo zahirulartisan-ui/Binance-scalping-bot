@@ -1,10 +1,10 @@
 from collections.abc import Generator
 
-import app.models  # noqa: F401
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+import app.models  # noqa: F401
 from app.core.settings import AppEnvironment, get_settings
 from app.database.base import Base
 

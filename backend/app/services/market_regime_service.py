@@ -85,7 +85,10 @@ class MarketRegimeService:
     ) -> RegimeEvaluation:
         exists = db.scalar(select(ExchangeSymbol.id).where(ExchangeSymbol.symbol == symbol))
         if exists is None:
-            if self.settings.app_env is AppEnvironment.TEST and self._is_locally_supported_symbol(symbol):
+            if (
+                self.settings.app_env is AppEnvironment.TEST
+                and self._is_locally_supported_symbol(symbol)
+            ):
                 return self._make_result(
                     symbol,
                     datetime.now(UTC),
