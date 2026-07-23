@@ -1,6 +1,15 @@
 # Binance Scalping Bot
 
-A FastAPI, PostgreSQL, and React trading-system project being migrated to a strict **Binance USD-M Futures Demo-only** architecture.
+## ⚠️ Binance USD-M Futures Demo Safety Foundation ONLY
+This application is strictly locked to **Binance USD-M Futures Demo-only operation** on the official Binance testnet environment (`https://demo-fapi.binance.com`).
+- **No Spot trading** is supported. All previous spot assumptions have been removed or blocked.
+- **No Binance production trading** is supported. Unsafe production endpoints/hosts are strictly rejected.
+- **No real-money support** is provided.
+- **Execution defaults to OFF**.
+- **Emergency stop** immediately overrides and blocks all execution.
+- **Account synchronization** is NOT yet implemented.
+- **Order execution** (LONG or SHORT) is NOT yet implemented and is disabled in this foundational safety prompt.
+- **Internal simulation mode** is strictly isolated and disabled by default to prevent fake exchange execution ambiguity.
 
 ## Safety boundary
 
@@ -22,7 +31,7 @@ This repository does **not** support:
 - Arbitrary exchange hosts
 - Fake Binance order IDs, fills, positions, balances, or PnL
 
-The only allowlisted exchange host for Prompt 1 is:
+The only allowlisted exchange host is:
 
 ```text
 https://demo-fapi.binance.com
@@ -103,12 +112,13 @@ Never commit real credentials.
 
 ```env
 EXECUTION_ENABLED=false
-DEMO_TRADING_MODE=true
+DEMO_TRADING_MODE=false
 EMERGENCY_STOP=false
-BINANCE_TRADING_BASE_URL=https://demo-fapi.binance.com
-BINANCE_MARKET_DATA_BASE_URL=https://demo-fapi.binance.com
-BINANCE_DEMO_API_KEY=
-BINANCE_DEMO_API_SECRET=
+BINANCE_FUTURES_DEMO_BASE_URL=https://demo-fapi.binance.com
+BINANCE_FUTURES_DEMO_MARKET_DATA_URL=https://demo-fapi.binance.com
+BINANCE_FUTURES_DEMO_API_KEY=
+BINANCE_FUTURES_DEMO_API_SECRET=
+BINANCE_RECV_WINDOW=5000
 ```
 
 The empty credential values allow read-only startup. They do not make execution ready.
@@ -119,12 +129,13 @@ The root `.env.example` uses the corresponding `BACKEND_` variables:
 
 ```env
 BACKEND_EXECUTION_ENABLED=false
-BACKEND_DEMO_TRADING_MODE=true
+BACKEND_DEMO_TRADING_MODE=false
 BACKEND_EMERGENCY_STOP=false
-BACKEND_BINANCE_TRADING_BASE_URL=https://demo-fapi.binance.com
-BACKEND_BINANCE_MARKET_DATA_BASE_URL=https://demo-fapi.binance.com
-BACKEND_BINANCE_DEMO_API_KEY=
-BACKEND_BINANCE_DEMO_API_SECRET=
+BACKEND_BINANCE_FUTURES_DEMO_BASE_URL=https://demo-fapi.binance.com
+BACKEND_BINANCE_FUTURES_DEMO_MARKET_DATA_URL=https://demo-fapi.binance.com
+BACKEND_BINANCE_FUTURES_DEMO_API_KEY=
+BACKEND_BINANCE_FUTURES_DEMO_API_SECRET=
+BACKEND_BINANCE_RECV_WINDOW=5000
 ```
 
 Do not replace these values with `api.binance.com`, `fapi.binance.com`, a Spot endpoint, an HTTP URL, or a custom host.

@@ -14,6 +14,7 @@ from app.schemas.health import (
     HealthResponse,
     HealthStatus,
 )
+from app.services.execution_service import ExecutionService
 from app.services.migration_service import migrations_ready
 
 router = APIRouter()
@@ -46,34 +47,25 @@ def health_check(
         database_status = HealthStatus(status="error", detail=exc.__class__.__name__)
         migration_status = HealthStatus(status="not_ready", detail="database unavailable")
 
+    # Get execution service status snapshot
+    service = ExecutionService(settings)
+    snapshot = service.get_status(db)
+
     database_ready = database_status.status == "ok"
     credentials_ready = (
-        settings.binance_demo_api_key is not None
-        and settings.binance_demo_api_secret is not None
+        settings.binance_futures_demo_api_key is not None
+        and settings.binance_futures_demo_api_secret is not None
     )
-    trading_endpoint_allowlisted = _endpoint_is_allowlisted(settings.binance_trading_base_url)
+    trading_endpoint_allowlisted = _endpoint_is_allowlisted(settings.binance_futures_demo_base_url)
     market_data_endpoint_allowlisted = _endpoint_is_allowlisted(
-        settings.binance_market_data_base_url
+        settings.binance_futures_demo_market_data_url
     )
     endpoint_safe = trading_endpoint_allowlisted and market_data_endpoint_allowlisted
 
-    blocking_reason_codes: list[str] = []
-    if not settings.execution_enabled:
-        blocking_reason_codes.append("execution_disabled")
-    if settings.emergency_stop:
-        blocking_reason_codes.append("emergency_stop_active")
-    if not credentials_ready:
-        blocking_reason_codes.append("futures_demo_credentials_missing")
-    if not endpoint_safe:
-        blocking_reason_codes.append("unsafe_exchange_endpoint")
-    if not settings.demo_trading_mode:
-        blocking_reason_codes.append("unsupported_trading_mode")
-    if not database_ready:
-        blocking_reason_codes.append("database_not_ready")
-    if not migration_ready:
-        blocking_reason_codes.append("migrations_not_ready")
+    # We use snapshot reasons directly to align with get_status and Settings validations
+    blocking_reason_codes = snapshot.reasons
 
-    execution_ready = len(blocking_reason_codes) == 0
+    execution_ready = snapshot.executable
     if execution_ready:
         execution_status = "ready"
     elif settings.execution_enabled:
@@ -86,7 +78,7 @@ def health_check(
         database=database_status,
         environment=HealthStatus(status=settings.app_env.value),
         demo_trading=HealthStatus(
-            status="enabled" if settings.demo_trading_mode else "disabled",
+            status="disabled",
             detail="Legacy compatibility field; exchange safety is reported separately.",
         ),
         execution=HealthStatus(
@@ -99,8 +91,8 @@ def health_check(
         product_type=HealthStatus(status="usd_m_futures", detail="USDT perpetual futures only"),
         trading_environment=HealthStatus(status="futures_demo_only"),
         endpoints=EndpointSafetyStatus(
-            trading_base_url=settings.binance_trading_base_url,
-            market_data_base_url=settings.binance_market_data_base_url,
+            trading_base_url=settings.binance_futures_demo_base_url,
+            market_data_base_url=settings.binance_futures_demo_market_data_url,
             trading_endpoint_allowlisted=trading_endpoint_allowlisted,
             market_data_endpoint_allowlisted=market_data_endpoint_allowlisted,
             allowlisted_hosts=sorted(FUTURES_DEMO_ALLOWLISTED_HOSTS),
