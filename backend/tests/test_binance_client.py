@@ -52,4 +52,4 @@ def test_klines_rejects_unsupported_interval() -> None:
     client = client_with_statuses([200])
 
     with pytest.raises(BinanceInvalidRequestError):
-        client.klines("BTCUSDT", "30m")
+        client.klines("BTCUSDT", "15m")

@@ -97,10 +97,10 @@ def test_candle_response_parsing_string_numeric_values() -> None:
     }
 
     response = CandleResponse.model_validate(raw_data)
-    assert isinstance(response.open_price, float)
-    assert response.open_price == 10123.45
-    assert response.high_price == 10150.0
-    assert response.low_price == 10100.12
-    assert response.close_price == 10140.5
-    assert response.volume == 1.2345
-    assert response.quote_volume == 12500.0
+    assert isinstance(response.open_price, Decimal)
+    assert response.open_price == Decimal("10123.45")
+    assert response.high_price == Decimal("10150.00")
+    assert response.low_price == Decimal("10100.12")
+    assert response.close_price == Decimal("10140.50")
+    assert response.volume == Decimal("1.2345")
+    assert response.quote_volume == Decimal("12500.0")

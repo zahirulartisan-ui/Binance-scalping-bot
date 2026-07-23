@@ -84,28 +84,28 @@ class BinanceMarketDataClient:
             time.sleep(delay)
 
     def exchange_info(self) -> dict[str, Any]:
-        data = self._request("/fapi/v1/exchangeInfo")
+        data = self._request("/api/v3/exchangeInfo")
         if not isinstance(data, dict):
             raise BinanceClientError("Malformed exchangeInfo response")
         return data
 
     def book_ticker(self, symbol: str) -> dict[str, Any]:
-        data = self._request("/fapi/v1/ticker/bookTicker", {"symbol": symbol})
+        data = self._request("/api/v3/ticker/bookTicker", {"symbol": symbol})
         if not isinstance(data, dict):
             raise BinanceClientError("Malformed book ticker response")
         return data
 
     def recent_price(self, symbol: str) -> dict[str, Any]:
-        data = self._request("/fapi/v1/ticker/price", {"symbol": symbol})
+        data = self._request("/api/v3/ticker/price", {"symbol": symbol})
         if not isinstance(data, dict):
             raise BinanceClientError("Malformed price response")
         return data
 
     def klines(self, symbol: str, interval: str, limit: int = 2) -> list[Any]:
-        if interval not in {"1m", "5m", "15m"}:
+        if interval not in {"1m", "5m"}:
             raise BinanceInvalidRequestError("Unsupported kline interval")
         data = self._request(
-            "/fapi/v1/klines",
+            "/api/v3/klines",
             {"symbol": symbol, "interval": interval, "limit": limit},
         )
         if not isinstance(data, list):

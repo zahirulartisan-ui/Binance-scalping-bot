@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -17,7 +17,6 @@ from app.schemas.market_data import (
     SnapshotResponse,
     SymbolResponse,
 )
-from app.services.market_data_service import TIMEFRAME_SECONDS
 
 router = APIRouter(prefix="/api/v1/market-data", tags=["market-data"])
 
@@ -85,116 +84,9 @@ def read_candles(
         statement = statement.where(OhlcvCandle.open_time >= start_time)
     if end_time:
         statement = statement.where(OhlcvCandle.open_time < end_time)
-
-    db_candles = list(db.scalars(statement))
-    candles_res = [
-        CandleResponse.model_validate(row, from_attributes=True) for row in db_candles
+    return [
+        CandleResponse.model_validate(row, from_attributes=True) for row in db.scalars(statement)
     ]
-
-    def ensure_utc(dt: datetime) -> datetime:
-        if dt.tzinfo is None:
-            return dt.replace(tzinfo=UTC)
-        return dt.astimezone(UTC)
-
-    # Dynamic synchronization between orderbook last price and latest closed candle
-    now = datetime.now(UTC)
-    if not end_time or end_time >= now:
-        snapshot = db.scalars(
-            select(MarketSnapshot)
-            .where(MarketSnapshot.symbol == normalized)
-            .order_by(MarketSnapshot.snapshot_at.desc())
-            .limit(1)
-        ).first()
-
-        if snapshot:
-            last_price = float(snapshot.last_price)
-            interval_seconds = TIMEFRAME_SECONDS[timeframe]
-            now_ts = now.timestamp()
-            current_open_ts = int(now_ts // interval_seconds) * interval_seconds
-            current_open_time = ensure_utc(datetime.fromtimestamp(current_open_ts, UTC))
-            current_close_time = (
-                current_open_time
-                + timedelta(seconds=interval_seconds)
-                - timedelta(milliseconds=1)
-            )
-
-            if candles_res:
-                # Find if they are in descending order or ascending order
-                is_desc = True
-                if len(candles_res) > 1:
-                    is_desc = ensure_utc(candles_res[0].open_time) > ensure_utc(
-                        candles_res[-1].open_time
-                    )
-
-                if is_desc:
-                    latest_closed = candles_res[0]
-                    latest_open_utc = ensure_utc(latest_closed.open_time)
-                    if latest_open_utc == current_open_time:
-                        latest_closed.close_price = last_price
-                        if last_price > latest_closed.high_price:
-                            latest_closed.high_price = last_price
-                        if last_price < latest_closed.low_price:
-                            latest_closed.low_price = last_price
-                    elif latest_open_utc < current_open_time:
-                        live_candle = CandleResponse(
-                            symbol=normalized,
-                            timeframe=timeframe,
-                            open_time=current_open_time,
-                            close_time=current_close_time,
-                            open_price=latest_closed.close_price,
-                            high_price=max(latest_closed.close_price, last_price),
-                            low_price=min(latest_closed.close_price, last_price),
-                            close_price=last_price,
-                            volume=0.0,
-                            quote_volume=0.0,
-                            trade_count=0,
-                        )
-                        candles_res.insert(0, live_candle)
-                        if len(candles_res) > limit:
-                            candles_res.pop()
-                else:
-                    latest_closed = candles_res[-1]
-                    latest_open_utc = ensure_utc(latest_closed.open_time)
-                    if latest_open_utc == current_open_time:
-                        latest_closed.close_price = last_price
-                        if last_price > latest_closed.high_price:
-                            latest_closed.high_price = last_price
-                        if last_price < latest_closed.low_price:
-                            latest_closed.low_price = last_price
-                    elif latest_open_utc < current_open_time:
-                        live_candle = CandleResponse(
-                            symbol=normalized,
-                            timeframe=timeframe,
-                            open_time=current_open_time,
-                            close_time=current_close_time,
-                            open_price=latest_closed.close_price,
-                            high_price=max(latest_closed.close_price, last_price),
-                            low_price=min(latest_closed.close_price, last_price),
-                            close_price=last_price,
-                            volume=0.0,
-                            quote_volume=0.0,
-                            trade_count=0,
-                        )
-                        candles_res.append(live_candle)
-                        if len(candles_res) > limit:
-                            candles_res.pop(0)
-            else:
-                live_candle = CandleResponse(
-                    symbol=normalized,
-                    timeframe=timeframe,
-                    open_time=current_open_time,
-                    close_time=current_close_time,
-                    open_price=last_price,
-                    high_price=last_price,
-                    low_price=last_price,
-                    close_price=last_price,
-                    volume=0.0,
-                    quote_volume=0.0,
-                    trade_count=0,
-                )
-                candles_res.append(live_candle)
-
-    return candles_res
 
 
 @router.get("/snapshot", response_model=SnapshotResponse | None)

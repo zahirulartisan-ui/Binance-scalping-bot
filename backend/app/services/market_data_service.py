@@ -12,11 +12,7 @@ from app.models.enums import CandleTimeframe, MarketDataCycleStatus
 from app.models.market_data import ExchangeSymbol, MarketDataCycle, MarketSnapshot, OhlcvCandle
 
 LEVERAGED_TOKEN_SUFFIXES = ("UPUSDT", "DOWNUSDT", "BULLUSDT", "BEARUSDT")
-TIMEFRAME_SECONDS = {
-    CandleTimeframe.ONE_MINUTE: 60,
-    CandleTimeframe.FIVE_MINUTES: 300,
-    CandleTimeframe.FIFTEEN_MINUTES: 900,
-}
+TIMEFRAME_SECONDS = {CandleTimeframe.ONE_MINUTE: 60, CandleTimeframe.FIVE_MINUTES: 300}
 
 
 class MarketDataValidationError(ValueError):
@@ -55,11 +51,14 @@ def millisecond_to_utc(value: Any, field_name: str) -> datetime:
 
 def is_eligible_symbol(raw: dict[str, Any]) -> bool:
     symbol = str(raw.get("symbol", "")).upper()
+    permissions = raw.get("permissions") or []
     return (
         symbol.endswith("USDT")
         and not symbol.endswith(LEVERAGED_TOKEN_SUFFIXES)
         and raw.get("status") == "TRADING"
         and raw.get("quoteAsset") == "USDT"
+        and bool(raw.get("isSpotTradingAllowed", False))
+        and ("SPOT" in permissions or not permissions)
     )
 
 
