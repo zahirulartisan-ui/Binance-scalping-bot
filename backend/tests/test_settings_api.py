@@ -8,6 +8,8 @@ def test_settings_api_returns_public_non_secret_settings(client: TestClient) -> 
     payload = response.json()
     assert "binance_demo_api_key" not in payload
     assert "binance_demo_api_secret" not in payload
+    assert "binance_futures_demo_api_key" not in payload
+    assert "binance_futures_demo_api_secret" not in payload
     assert "database_url" not in payload
     assert payload["execution_enabled"] is False
     assert payload["position_monitoring_enabled"] is True
