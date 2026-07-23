@@ -77,3 +77,30 @@ def test_market_data_api_parameter_validation(client: TestClient) -> None:
     assert client.get("/api/v1/market-data/candles?symbol=BAD&timeframe=1m").status_code == 422
     assert client.get("/api/v1/market-data/candles?symbol=BTCUSDT&timeframe=30m").status_code == 422
     assert client.get("/api/v1/market-data/symbols?limit=9999").status_code == 422
+
+
+def test_candle_response_parsing_string_numeric_values() -> None:
+    from app.schemas.market_data import CandleResponse
+
+    raw_data = {
+        "symbol": "BTCUSDT",
+        "timeframe": "1m",
+        "open_time": "2026-07-23T18:48:29.852Z",
+        "close_time": "2026-07-23T18:49:29.852Z",
+        "open_price": "10123.45",
+        "high_price": "10150.00",
+        "low_price": "10100.12",
+        "close_price": "10140.50",
+        "volume": "1.2345",
+        "quote_volume": "12500.0",
+        "trade_count": 42
+    }
+
+    response = CandleResponse.model_validate(raw_data)
+    assert isinstance(response.open_price, float)
+    assert response.open_price == 10123.45
+    assert response.high_price == 10150.0
+    assert response.low_price == 10100.12
+    assert response.close_price == 10140.5
+    assert response.volume == 1.2345
+    assert response.quote_volume == 12500.0

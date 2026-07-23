@@ -157,7 +157,24 @@ export const apiClient = {
       `${baseUrl}/api/v1/market-data/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${timeframe}&limit=${limit}`,
       { method: "GET" }
     );
-    return await handleResponse<Candle[]>(res);
+    const rawCandles = await handleResponse<Candle[]>(res);
+    return rawCandles
+      .map((c) => ({
+        ...c,
+        open_price: Number(c.open_price),
+        high_price: Number(c.high_price),
+        low_price: Number(c.low_price),
+        close_price: Number(c.close_price),
+        volume: Number(c.volume),
+      }))
+      .filter(
+        (c) =>
+          Number.isFinite(c.open_price) &&
+          Number.isFinite(c.high_price) &&
+          Number.isFinite(c.low_price) &&
+          Number.isFinite(c.close_price) &&
+          Number.isFinite(c.volume)
+      );
   },
 
   // GET /api/v1/settings
