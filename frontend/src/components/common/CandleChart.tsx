@@ -12,6 +12,18 @@ import {
 import { Candle, CandleTimeframe } from "../../api/types";
 import { Clock, TrendingUp, TrendingDown, Layers } from "lucide-react";
 
+/**
+ * Safely formats a value as a string with a fixed number of decimals.
+ * Gracefully handles non-finite or non-number values by falling back.
+ */
+const safeToFixed = (val: any, decimals = 2): string => {
+  const num = Number(val);
+  if (!Number.isFinite(num)) {
+    return "0." + "0".repeat(decimals);
+  }
+  return num.toFixed(decimals);
+};
+
 interface CandleChartProps {
   candles: Candle[];
   symbol: string;
@@ -121,8 +133,8 @@ export const CandleChart: React.FC<CandleChartProps> = ({
                 >
                   {priceChange >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
                   {priceChange >= 0 ? "+" : ""}
-                  {priceChange.toFixed(2)} ({priceChangePct >= 0 ? "+" : ""}
-                  {priceChangePct.toFixed(2)}%)
+                  {safeToFixed(priceChange, 2)} ({priceChangePct >= 0 ? "+" : ""}
+                  {safeToFixed(priceChangePct, 2)}%)
                 </span>
               </div>
             )}
@@ -199,14 +211,14 @@ export const CandleChart: React.FC<CandleChartProps> = ({
                           </div>
                           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                             <span className="text-slate-400">Open:</span>
-                            <span className="text-right text-slate-100">${data.open_price.toFixed(2)}</span>
+                            <span className="text-right text-slate-100">${safeToFixed(data.open_price, 2)}</span>
                             <span className="text-slate-400">High:</span>
-                            <span className="text-right text-emerald-400">${data.high_price.toFixed(2)}</span>
+                            <span className="text-right text-emerald-400">${safeToFixed(data.high_price, 2)}</span>
                             <span className="text-slate-400">Low:</span>
-                            <span className="text-right text-rose-400">${data.low_price.toFixed(2)}</span>
+                            <span className="text-right text-rose-400">${safeToFixed(data.low_price, 2)}</span>
                             <span className="text-slate-400">Close:</span>
                             <span className={`text-right font-bold ${isUp ? "text-emerald-400" : "text-rose-400"}`}>
-                              ${data.close_price.toFixed(2)}
+                              ${safeToFixed(data.close_price, 2)}
                             </span>
                             <span className="text-slate-400">Volume:</span>
                             <span className="text-right text-sky-300">{data.volume.toLocaleString()}</span>

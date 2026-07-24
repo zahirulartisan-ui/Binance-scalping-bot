@@ -16,6 +16,7 @@ import {
   TradeJournalResponse,
   TrendPullbackEvaluation,
 } from "./types";
+import { normalizeCandles } from "../utils/candleNormalizer";
 
 /**
  * Validates and retrieves the API Base URL.
@@ -157,7 +158,8 @@ export const apiClient = {
       `${baseUrl}/api/v1/market-data/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${timeframe}&limit=${limit}`,
       { method: "GET" }
     );
-    return await handleResponse<Candle[]>(res);
+    const data = await handleResponse<any[]>(res);
+    return normalizeCandles(data);
   },
 
   // GET /api/v1/settings
